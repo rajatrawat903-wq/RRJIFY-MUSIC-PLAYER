@@ -1436,50 +1436,220 @@
        UPLOAD SONG
     ===================================================== */
 
-    uploadBtn.addEventListener(
-      "click",
-      uploadSong
+ async function uploadSong() {
+
+  if (!currentUser) {
+    toast("Please sign in first.");
+    return;
+  }
+
+  const file = audioFile.files[0];
+
+  if (!file) {
+    toast("Select a song first.");
+    return;
+  }
+
+  try {
+
+    uploadBtn.disabled = true;
+
+    progressBar.style.width = "0%";
+    progressText.textContent = "Preparing upload...";
+
+    const extension =
+      file.name.split(".").pop().toLowerCase();
+
+    const title =
+      file.name.replace(/\.[^/.]+$/, "");
+
+    const trackRef = doc(
+      collection(
+        db,
+        "users",
+        currentUser.uid,
+        "tracks"
+      )
     );
 
+    const trackId = trackRef.id;
 
-    async function uploadSong() {
+    console.log("TRACK ID:", trackId);
+    console.log("FILE:", file);
+    console.log("SIZE:", file.size);
+    console.log("TYPE:", file.type);
 
-      if (!currentUser) {
+    await setDoc(trackRef, {
+      title: title,
+      artist:
+        currentUser.displayName ||
+        currentUser.email ||
+        "Unknown Artist",
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type || "audio/mpeg",
+      extension: extension,
+      status: "processing",
+      public: false,
+      ownerId: currentUser.uid,
+      createdAt: serverTimestamp(),
+      audioUrl: "",
+      storagePath: ""
+    });
 
-        toast(
-          "Please sign in first."
-        );
+    console.log("✅ FIRESTORE DOCUMENT CREATED");
 
-        return;
+    const path =
+      `users/${currentUser.uid}/tracks/${trackId}.${extension}`;
 
+    console.log("STORAGE PATH:", path);
+
+    const fileRef =
+      storageRef(storage, path);
+
+    progressText.textContent =
+      "Uploading song...";
+
+    const uploadTask =
+      uploadBytesResumable(
+        fileRef,
+        file,
+        {
+          contentType:
+            file.type || "audio/mpeg"
+        }
+      );
+
+    await new Promise((resolve, reject) => {
+
+      uploadTask.on(
+
+        "state_changed",
+
+        snapshot => {
+
+          const percent =
+            (
+              snapshot.bytesTransferred /
+              snapshot.totalBytes
+            ) * 100;
+
+          progressBar.style.width =
+            `${percent}%`;
+
+          progressText.textContent =
+            `Uploading ${Math.round(percent)}%`;
+
+          console.log(
+            `UPLOAD ${Math.round(percent)}%`
+          );
+        },
+
+        error => {
+
+          console.error(
+            "🔥 STORAGE UPLOAD ERROR:",
+            error
+          );
+
+          reject(error);
+        },
+
+        () => {
+
+          console.log(
+            "✅ STORAGE UPLOAD COMPLETE"
+          );
+
+          resolve();
+        }
+
+      );
+
+    });
+
+    progressText.textContent =
+      "Getting download URL...";
+
+    const audioUrl =
+      await getDownloadURL(fileRef);
+
+    console.log(
+      "✅ DOWNLOAD URL:",
+      audioUrl
+    );
+
+    await updateDoc(
+      trackRef,
+      {
+        audioUrl: audioUrl,
+        storagePath: path,
+        status: "ready"
       }
+    );
 
+    console.log(
+      "✅ FIRESTORE UPDATED"
+    );
 
-      const file =
-        audioFile.files[0];
+    progressBar.style.width =
+      "100%";
 
+    progressText.textContent =
+      "✅ Song uploaded successfully!";
 
-      if (!file) {
+    toast(
+      "🎵 Song uploaded!"
+    );
 
-        toast(
-          "Select a song first."
-        );
+    audioFile.value = "";
 
-        return;
+  } catch (error) {
 
-      }
+    console.error(
+      "================================"
+    );
 
+    console.error(
+      "🔥 UPLOAD FAILED"
+    );
 
-      try {
+    console.error(
+      "CODE:",
+      error.code
+    );
 
-        uploadBtn.disabled =
-          true;
+    console.error(
+      "MESSAGE:",
+      error.message
+    );
 
-        progressBar.style.width =
-          "0%";
+    console.error(
+      "FULL ERROR:",
+      error
+    );
 
-        progressText.textContent =
-          "Creating song record...";
+    console.error(
+      "================================"
+    );
+
+    progressText.textContent =
+      "❌ Upload failed — check Console.";
+
+    toast(
+      error.code ||
+      error.message ||
+      "Upload failed."
+    );
+
+  } finally {
+
+    uploadBtn.disabled =
+      !currentUser;
+
+  }
+
+}
 
 
         /* -----------------------------------------
