@@ -1083,15 +1083,70 @@ const els = {
   repeatBtn: document.getElementById("repeatBtn"),
 };
 
-function playTrack(track, contextQueue = null) {
-  if (!track.audioUrl) { toast("Still processing this upload — try again in a moment."); return; }
-  if (contextQueue) { queue = contextQueue; queueIndex = queue.findIndex(t => t.id === track.id); }
-  else { queue = [track]; queueIndex = 0; }
+async function playTrack(track, contextQueue = null) {
+  if (!track || !track.audioUrl) {
+    console.error("NO AUDIO URL:", track);
+    toast("Song is still processing — please wait.");
+    return;
+  }
 
-  audioEl.src = track.audioUrl;
-  audioEl.play();
-  updateNowPlayingUI(track);
-  logListeningHistory(track);
+  try {
+    // Queue setup
+    if (contextQueue && contextQueue.length) {
+      queue = contextQueue;
+      queueIndex = queue.findIndex(t => t.id === track.id);
+
+      if (queueIndex < 0) {
+        queueIndex = 0;
+      }
+    } else {
+      queue = [track];
+      queueIndex = 0;
+    }
+
+    console.log("=================================");
+    console.log("RRJIFY PLAYBACK");
+    console.log("Title:", track.title);
+    console.log("Artist:", track.artist);
+    console.log("Audio URL:", track.audioUrl);
+    console.log("Status:", track.status);
+    console.log("=================================");
+
+    // Stop previous track
+    audioEl.pause();
+    audioEl.currentTime = 0;
+
+    // Reset player
+    audioEl.src = "";
+    audioEl.load();
+
+    // Set new track
+    audioEl.src = track.audioUrl;
+    audioEl.load();
+
+    updateNowPlayingUI(track);
+
+    // Actually start playback
+    await audioEl.play();
+
+    console.log("✅ PLAYING:", track.title);
+
+    // Save listening history
+    logListeningHistory(track);
+
+  } catch (err) {
+    console.error("❌ PLAYBACK ERROR:", err);
+
+    if (err.name === "NotSupportedError") {
+      toast("This audio format cannot be played by your browser.");
+    } 
+    else if (err.name === "NotAllowedError") {
+      toast("Browser blocked playback. Click the Play button again.");
+    } 
+    else {
+      toast("Unable to play this song. Check Console (F12).");
+    }
+  }
 }
 
 function updateNowPlayingUI(track) {
