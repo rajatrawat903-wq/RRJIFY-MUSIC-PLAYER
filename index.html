@@ -101,8 +101,17 @@
 
     .hero {
       background:
-        radial-gradient(circle at top right, rgba(30,215,96,.2), transparent 40%),
-        linear-gradient(135deg, #151515, #0c0c0c);
+        radial-gradient(
+          circle at top right,
+          rgba(30,215,96,.2),
+          transparent 40%
+        ),
+        linear-gradient(
+          135deg,
+          #151515,
+          #0c0c0c
+        );
+
       border: 1px solid #292929;
       border-radius: 24px;
       padding: 35px;
@@ -218,7 +227,11 @@
 
     .track-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      grid-template-columns:
+        repeat(
+          auto-fill,
+          minmax(190px, 1fr)
+        );
       gap: 18px;
     }
 
@@ -241,7 +254,12 @@
       width: 100%;
       aspect-ratio: 1;
       border-radius: 13px;
-      background: linear-gradient(135deg, #1ed760, #101010);
+      background:
+        linear-gradient(
+          135deg,
+          #1ed760,
+          #101010
+        );
       overflow: hidden;
       margin-bottom: 12px;
     }
@@ -431,7 +449,8 @@
       padding: 13px 18px;
       border-radius: 12px;
       margin-top: 8px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.4);
+      box-shadow:
+        0 10px 30px rgba(0,0,0,.4);
       animation: toastIn .2s ease;
     }
 
@@ -452,6 +471,7 @@
     ========================= */
 
     @media(max-width: 800px) {
+
       header {
         padding: 0 14px;
       }
@@ -489,9 +509,11 @@
       }
 
       .track-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns:
+          repeat(2, 1fr);
         gap: 10px;
       }
+
     }
   </style>
 </head>
@@ -510,7 +532,10 @@
 
     <div class="header-right">
 
-      <span id="userName" class="user-name">
+      <span
+        id="userName"
+        class="user-name"
+      >
         Not signed in
       </span>
 
@@ -561,9 +586,17 @@
     <section class="section">
 
       <div class="section-header">
-        <h2>Upload Music</h2>
-        <span>MP3 / WAV / FLAC • Max 120 MB</span>
+
+        <h2>
+          Upload Music
+        </h2>
+
+        <span>
+          MP3 / WAV / FLAC • Max 120 MB
+        </span>
+
       </div>
+
 
       <div class="upload-box">
 
@@ -589,10 +622,12 @@
         <div class="progress-wrap">
 
           <div class="progress-bar">
+
             <div
               id="progressBar"
               class="progress"
             ></div>
+
           </div>
 
           <div
@@ -738,6 +773,7 @@
 
       </div>
 
+
       <div class="timeline">
 
         <span id="currentTime">
@@ -748,8 +784,9 @@
           id="seekBar"
           type="range"
           min="0"
-          max="100"
+          max="0"
           value="0"
+          step="0.1"
         >
 
         <span id="duration">
@@ -788,9 +825,9 @@
   <div id="toastBox"></div>
 
 
-  <!-- =========================
-       FIREBASE + APP
-  ========================= -->
+  <!-- =====================================================
+       FIREBASE + COMPLETE RRJIFY APP
+  ===================================================== -->
 
   <script type="module">
 
@@ -803,6 +840,7 @@
     } from
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 
+
     import {
       getAuth,
       GoogleAuthProvider,
@@ -812,11 +850,11 @@
     } from
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
+
     import {
       getFirestore,
       collection,
       doc,
-      addDoc,
       setDoc,
       updateDoc,
       onSnapshot,
@@ -827,6 +865,7 @@
       serverTimestamp
     } from
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 
     import {
       getStorage,
@@ -978,21 +1017,116 @@
     const audioEl =
       new Audio();
 
-    audioEl.volume = 0.8;
+    audioEl.volume =
+      0.8;
 
-    audioEl.preload = "metadata";
+    audioEl.preload =
+      "metadata";
 
 
     /* =====================================================
-       AUDIO DEBUGGING
+       HELPERS
+    ===================================================== */
+
+    function toast(message) {
+
+      const box =
+        document.getElementById(
+          "toastBox"
+        );
+
+      const item =
+        document.createElement(
+          "div"
+        );
+
+      item.className =
+        "toast";
+
+      item.textContent =
+        message;
+
+      box.appendChild(
+        item
+      );
+
+      setTimeout(
+        () => item.remove(),
+        3500
+      );
+
+    }
+
+
+    function formatTime(seconds) {
+
+      if (
+        !Number.isFinite(seconds) ||
+        seconds < 0
+      ) {
+
+        return "0:00";
+
+      }
+
+      const mins =
+        Math.floor(
+          seconds / 60
+        );
+
+      const secs =
+        Math.floor(
+          seconds % 60
+        )
+        .toString()
+        .padStart(2, "0");
+
+      return `${mins}:${secs}`;
+
+    }
+
+
+    function escapeHTML(value) {
+
+      return String(
+        value ?? ""
+      )
+        .replaceAll(
+          "&",
+          "&amp;"
+        )
+        .replaceAll(
+          "<",
+          "&lt;"
+        )
+        .replaceAll(
+          ">",
+          "&gt;"
+        )
+        .replaceAll(
+          '"',
+          "&quot;"
+        )
+        .replaceAll(
+          "'",
+          "&#039;"
+        );
+
+    }
+
+
+    /* =====================================================
+       AUDIO DEBUG
     ===================================================== */
 
     audioEl.addEventListener(
       "loadstart",
       () => {
+
         console.log(
           "🔵 AUDIO LOAD START"
         );
+
       }
     );
 
@@ -1011,10 +1145,14 @@
         );
 
         durationEl.textContent =
-          formatTime(audioEl.duration);
+          formatTime(
+            audioEl.duration
+          );
 
         seekBar.max =
-          Number.isFinite(audioEl.duration)
+          Number.isFinite(
+            audioEl.duration
+          )
             ? audioEl.duration
             : 0;
 
@@ -1025,9 +1163,11 @@
     audioEl.addEventListener(
       "loadeddata",
       () => {
+
         console.log(
           "✅ AUDIO DATA LOADED"
         );
+
       }
     );
 
@@ -1035,9 +1175,11 @@
     audioEl.addEventListener(
       "canplay",
       () => {
+
         console.log(
           "✅ AUDIO CAN PLAY"
         );
+
       }
     );
 
@@ -1087,10 +1229,14 @@
       () => {
 
         currentTime.textContent =
-          formatTime(audioEl.currentTime);
+          formatTime(
+            audioEl.currentTime
+          );
 
         if (
-          Number.isFinite(audioEl.duration) &&
+          Number.isFinite(
+            audioEl.duration
+          ) &&
           audioEl.duration > 0
         ) {
 
@@ -1108,28 +1254,14 @@
       () => {
 
         console.error(
-          "🔥 AUDIO ELEMENT ERROR:",
+          "🔥 AUDIO ERROR:",
           audioEl.error
         );
 
         console.error(
-          "Current URL:",
+          "AUDIO URL:",
           audioEl.src
         );
-
-        if (audioEl.error) {
-
-          console.error(
-            "Error code:",
-            audioEl.error.code
-          );
-
-          console.error(
-            "Error message:",
-            audioEl.error.message
-          );
-
-        }
 
         toast(
           "Audio failed to load. Check Console."
@@ -1149,68 +1281,6 @@
 
       }
     );
-
-
-    /* =====================================================
-       HELPERS
-    ===================================================== */
-
-    function toast(message) {
-
-      const box =
-        document.getElementById("toastBox");
-
-      const item =
-        document.createElement("div");
-
-      item.className =
-        "toast";
-
-      item.textContent =
-        message;
-
-      box.appendChild(item);
-
-      setTimeout(
-        () => item.remove(),
-        3500
-      );
-
-    }
-
-
-    function formatTime(seconds) {
-
-      if (
-        !Number.isFinite(seconds) ||
-        seconds < 0
-      ) {
-        return "0:00";
-      }
-
-      const mins =
-        Math.floor(seconds / 60);
-
-      const secs =
-        Math.floor(seconds % 60)
-          .toString()
-          .padStart(2, "0");
-
-      return `${mins}:${secs}`;
-
-    }
-
-
-    function escapeHTML(value) {
-
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-
-    }
 
 
     /* =====================================================
@@ -1264,11 +1334,14 @@
 
         try {
 
-          await signOut(auth);
+          await signOut(
+            auth
+          );
 
         } catch (error) {
 
           console.error(
+            "LOGOUT ERROR:",
             error
           );
 
@@ -1309,6 +1382,9 @@
           libraryEmpty.textContent =
             "No songs uploaded yet.";
 
+          uploadBtn.disabled =
+            !audioFile.files[0];
+
           subscribeToLibrary(
             user.uid
           );
@@ -1324,10 +1400,17 @@
           logoutBtn.classList
             .add("hidden");
 
-          libraryRow.innerHTML = "";
+          libraryRow.innerHTML =
+            "";
+
+          libraryEmpty.classList
+            .remove("hidden");
 
           libraryEmpty.textContent =
             "Sign in and upload a song to see your library.";
+
+          uploadBtn.disabled =
+            true;
 
         }
 
@@ -1346,6 +1429,7 @@
         const file =
           audioFile.files[0];
 
+
         if (!file) {
 
           uploadBtn.disabled =
@@ -1357,16 +1441,6 @@
           return;
 
         }
-
-
-        const allowedTypes = [
-          "audio/mpeg",
-          "audio/mp3",
-          "audio/wav",
-          "audio/x-wav",
-          "audio/flac",
-          "audio/x-flac"
-        ];
 
 
         const extension =
@@ -1384,15 +1458,17 @@
 
 
         if (
-          !allowedExtensions
-            .includes(extension)
+          !allowedExtensions.includes(
+            extension
+          )
         ) {
 
           toast(
             "Only MP3, WAV and FLAC files are allowed."
           );
 
-          audioFile.value = "";
+          audioFile.value =
+            "";
 
           uploadBtn.disabled =
             true;
@@ -1406,13 +1482,17 @@
           120 * 1024 * 1024;
 
 
-        if (file.size > maxSize) {
+        if (
+          file.size >
+          maxSize
+        ) {
 
           toast(
             "File is larger than 120 MB."
           );
 
-          audioFile.value = "";
+          audioFile.value =
+            "";
 
           uploadBtn.disabled =
             true;
@@ -1422,11 +1502,30 @@
         }
 
 
+        if (!currentUser) {
+
+          uploadBtn.disabled =
+            true;
+
+          progressText.textContent =
+            "Please sign in first.";
+
+          return;
+
+        }
+
+
         uploadBtn.disabled =
-          !currentUser;
+          false;
+
 
         progressText.textContent =
-          `${file.name} selected — ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+          `${file.name} selected — ` +
+          `${(
+            file.size /
+            1024 /
+            1024
+          ).toFixed(2)} MB`;
 
       }
     );
@@ -1434,225 +1533,99 @@
 
     /* =====================================================
        UPLOAD SONG
+       IMPORTANT: THIS WAS MISSING
     ===================================================== */
 
-uploadBtn.addEventListener(
-  "click",
-  uploadSong
-);
+    async function uploadSong() {
 
-  if (!currentUser) {
-    toast("Please sign in first.");
-    return;
-  }
+      if (!currentUser) {
 
-  const file = audioFile.files[0];
+        toast(
+          "Please sign in first."
+        );
 
-  if (!file) {
-    toast("Select a song first.");
-    return;
-  }
+        return;
 
-  try {
-
-    uploadBtn.disabled = true;
-
-    progressBar.style.width = "0%";
-    progressText.textContent = "Preparing upload...";
-
-    const extension =
-      file.name.split(".").pop().toLowerCase();
-
-    const title =
-      file.name.replace(/\.[^/.]+$/, "");
-
-    const trackRef = doc(
-      collection(
-        db,
-        "users",
-        currentUser.uid,
-        "tracks"
-      )
-    );
-
-    const trackId = trackRef.id;
-
-    console.log("TRACK ID:", trackId);
-    console.log("FILE:", file);
-    console.log("SIZE:", file.size);
-    console.log("TYPE:", file.type);
-
-    await setDoc(trackRef, {
-      title: title,
-      artist:
-        currentUser.displayName ||
-        currentUser.email ||
-        "Unknown Artist",
-      fileName: file.name,
-      fileSize: file.size,
-      mimeType: file.type || "audio/mpeg",
-      extension: extension,
-      status: "processing",
-      public: false,
-      ownerId: currentUser.uid,
-      createdAt: serverTimestamp(),
-      audioUrl: "",
-      storagePath: ""
-    });
-
-    console.log("✅ FIRESTORE DOCUMENT CREATED");
-
-    const path =
-      `users/${currentUser.uid}/tracks/${trackId}.${extension}`;
-
-    console.log("STORAGE PATH:", path);
-
-    const fileRef =
-      storageRef(storage, path);
-
-    progressText.textContent =
-      "Uploading song...";
-
-    const uploadTask =
-      uploadBytesResumable(
-        fileRef,
-        file,
-        {
-          contentType:
-            file.type || "audio/mpeg"
-        }
-      );
-
-    await new Promise((resolve, reject) => {
-
-      uploadTask.on(
-
-        "state_changed",
-
-        snapshot => {
-
-          const percent =
-            (
-              snapshot.bytesTransferred /
-              snapshot.totalBytes
-            ) * 100;
-
-          progressBar.style.width =
-            `${percent}%`;
-
-          progressText.textContent =
-            `Uploading ${Math.round(percent)}%`;
-
-          console.log(
-            `UPLOAD ${Math.round(percent)}%`
-          );
-        },
-
-        error => {
-
-          console.error(
-            "🔥 STORAGE UPLOAD ERROR:",
-            error
-          );
-
-          reject(error);
-        },
-
-        () => {
-
-          console.log(
-            "✅ STORAGE UPLOAD COMPLETE"
-          );
-
-          resolve();
-        }
-
-      );
-
-    });
-
-    progressText.textContent =
-      "Getting download URL...";
-
-    const audioUrl =
-      await getDownloadURL(fileRef);
-
-    console.log(
-      "✅ DOWNLOAD URL:",
-      audioUrl
-    );
-
-    await updateDoc(
-      trackRef,
-      {
-        audioUrl: audioUrl,
-        storagePath: path,
-        status: "ready"
       }
-    );
 
-    console.log(
-      "✅ FIRESTORE UPDATED"
-    );
 
-    progressBar.style.width =
-      "100%";
+      const file =
+        audioFile.files[0];
 
-    progressText.textContent =
-      "✅ Song uploaded successfully!";
 
-    toast(
-      "🎵 Song uploaded!"
-    );
+      if (!file) {
 
-    audioFile.value = "";
+        toast(
+          "Select a song first."
+        );
 
-  } catch (error) {
+        return;
 
-    console.error(
-      "================================"
-    );
+      }
 
-    console.error(
-      "🔥 UPLOAD FAILED"
-    );
 
-    console.error(
-      "CODE:",
-      error.code
-    );
+      const extension =
+        file.name
+          .split(".")
+          .pop()
+          .toLowerCase();
 
-    console.error(
-      "MESSAGE:",
-      error.message
-    );
 
-    console.error(
-      "FULL ERROR:",
-      error
-    );
+      const allowedExtensions = [
+        "mp3",
+        "wav",
+        "flac"
+      ];
 
-    console.error(
-      "================================"
-    );
 
-    progressText.textContent =
-      "❌ Upload failed — check Console.";
+      if (
+        !allowedExtensions.includes(
+          extension
+        )
+      ) {
 
-    toast(
-      error.code ||
-      error.message ||
-      "Upload failed."
-    );
+        toast(
+          "Only MP3, WAV and FLAC are allowed."
+        );
 
-  } finally {
+        return;
 
-    uploadBtn.disabled =
-      !currentUser;
+      }
 
-  }
 
-}
+      if (
+        file.size >
+        120 * 1024 * 1024
+      ) {
+
+        toast(
+          "File is larger than 120 MB."
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        uploadBtn.disabled =
+          true;
+
+
+        progressBar.style.width =
+          "0%";
+
+
+        progressText.textContent =
+          "Creating song record...";
+
+
+        const title =
+          file.name.replace(
+            /\.[^/.]+$/,
+            ""
+          );
 
 
         /* -----------------------------------------
@@ -1674,19 +1647,25 @@ uploadBtn.addEventListener(
           trackRef.id;
 
 
-        const extension =
-          file.name
-            .split(".")
-            .pop()
-            .toLowerCase();
+        console.log(
+          "TRACK ID:",
+          trackId
+        );
 
+        console.log(
+          "FILE:",
+          file
+        );
 
-        const title =
-          file.name
-            .replace(
-              /\.[^/.]+$/,
-              ""
-            );
+        console.log(
+          "SIZE:",
+          file.size
+        );
+
+        console.log(
+          "TYPE:",
+          file.type
+        );
 
 
         await setDoc(
@@ -1739,12 +1718,23 @@ uploadBtn.addEventListener(
         );
 
 
+        console.log(
+          "✅ FIRESTORE DOCUMENT CREATED"
+        );
+
+
         /* -----------------------------------------
-           STORAGE REFERENCE
+           STORAGE PATH
         ----------------------------------------- */
 
         const path =
           `users/${currentUser.uid}/tracks/${trackId}.${extension}`;
+
+
+        console.log(
+          "STORAGE PATH:",
+          path
+        );
 
 
         const fileRef =
@@ -1755,7 +1745,7 @@ uploadBtn.addEventListener(
 
 
         progressText.textContent =
-          "Uploading audio...";
+          "Uploading song...";
 
 
         /* -----------------------------------------
@@ -1789,26 +1779,45 @@ uploadBtn.addEventListener(
                     snapshot.totalBytes
                   ) * 100;
 
+
                 progressBar.style.width =
                   `${percent}%`;
 
+
                 progressText.textContent =
-                  `Uploading... ${Math.round(percent)}%`;
+                  `Uploading ${Math.round(percent)}%`;
+
+
+                console.log(
+                  `UPLOAD ${Math.round(percent)}%`
+                );
 
               },
+
 
               error => {
 
                 console.error(
-                  "UPLOAD ERROR:",
+                  "🔥 STORAGE UPLOAD ERROR:",
                   error
                 );
 
-                reject(error);
+                reject(
+                  error
+                );
 
               },
 
-              resolve
+
+              () => {
+
+                console.log(
+                  "✅ STORAGE UPLOAD COMPLETE"
+                );
+
+                resolve();
+
+              }
 
             );
 
@@ -1831,7 +1840,7 @@ uploadBtn.addEventListener(
 
 
         console.log(
-          "✅ AUDIO URL:",
+          "✅ DOWNLOAD URL:",
           audioUrl
         );
 
@@ -1857,6 +1866,11 @@ uploadBtn.addEventListener(
         );
 
 
+        console.log(
+          "✅ FIRESTORE UPDATED"
+        );
+
+
         /* -----------------------------------------
            COMPLETE
         ----------------------------------------- */
@@ -1864,17 +1878,19 @@ uploadBtn.addEventListener(
         progressBar.style.width =
           "100%";
 
+
         progressText.textContent =
-          "✅ Upload complete!";
+          "✅ Song uploaded successfully!";
 
 
         toast(
-          "Song uploaded successfully!"
+          "🎵 Song uploaded!"
         );
 
 
         audioFile.value =
           "";
+
 
         setTimeout(
           () => {
@@ -1886,29 +1902,56 @@ uploadBtn.addEventListener(
               "Select a file to upload.";
 
           },
-          2500
+          3000
         );
 
 
       } catch (error) {
 
         console.error(
-          "❌ COMPLETE UPLOAD ERROR:",
+          "================================"
+        );
+
+        console.error(
+          "🔥 UPLOAD FAILED"
+        );
+
+        console.error(
+          "CODE:",
+          error.code
+        );
+
+        console.error(
+          "MESSAGE:",
+          error.message
+        );
+
+        console.error(
+          "FULL ERROR:",
           error
         );
 
+        console.error(
+          "================================"
+        );
+
+
         progressText.textContent =
-          "Upload failed.";
+          "❌ Upload failed — check Console.";
+
 
         toast(
           error.message ||
+          error.code ||
           "Upload failed."
         );
+
 
       } finally {
 
         uploadBtn.disabled =
-          !currentUser;
+          !currentUser ||
+          !audioFile.files[0];
 
       }
 
@@ -1916,10 +1959,22 @@ uploadBtn.addEventListener(
 
 
     /* =====================================================
+       ⭐ THE IMPORTANT MISSING LINE
+    ===================================================== */
+
+    uploadBtn.addEventListener(
+      "click",
+      uploadSong
+    );
+
+
+    /* =====================================================
        LIBRARY LISTENER
     ===================================================== */
 
-    function subscribeToLibrary(uid) {
+    function subscribeToLibrary(
+      uid
+    ) {
 
       const tracksRef =
         collection(
@@ -1949,7 +2004,10 @@ uploadBtn.addEventListener(
           libraryRow.innerHTML =
             "";
 
-          if (snap.empty) {
+
+          if (
+            snap.empty
+          ) {
 
             libraryEmpty.classList
               .remove("hidden");
@@ -1967,15 +2025,14 @@ uploadBtn.addEventListener(
             d => {
 
               const track = {
+
                 id:
                   d.id,
+
                 ...d.data()
+
               };
 
-
-              /* IMPORTANT:
-                 AGI TRACK INDEX
-              */
 
               trackIndex.set(
                 track.id,
@@ -1987,7 +2044,8 @@ uploadBtn.addEventListener(
                 renderTrackCard(
                   track,
                   {
-                    owned: true
+                    owned:
+                      true
                   }
                 )
               );
@@ -1996,6 +2054,7 @@ uploadBtn.addEventListener(
           );
 
         },
+
 
         error => {
 
@@ -2031,16 +2090,20 @@ uploadBtn.addEventListener(
       const q =
         query(
           tracksRef,
+
           where(
             "public",
             "==",
             true
           ),
+
           orderBy(
             "createdAt",
             "desc"
           ),
+
           limit(24)
+
         );
 
 
@@ -2054,7 +2117,9 @@ uploadBtn.addEventListener(
             "";
 
 
-          if (snap.empty) {
+          if (
+            snap.empty
+          ) {
 
             communityEmpty.classList
               .remove("hidden");
@@ -2072,9 +2137,12 @@ uploadBtn.addEventListener(
             d => {
 
               const track = {
+
                 id:
                   d.id,
+
                 ...d.data()
+
               };
 
 
@@ -2088,7 +2156,8 @@ uploadBtn.addEventListener(
                 renderTrackCard(
                   track,
                   {
-                    owned: false
+                    owned:
+                      false
                   }
                 )
               );
@@ -2097,6 +2166,7 @@ uploadBtn.addEventListener(
           );
 
         },
+
 
         error => {
 
@@ -2125,12 +2195,11 @@ uploadBtn.addEventListener(
       options = {}
     ) {
 
-      const owned =
-        options.owned === true;
-
-
       const card =
-        document.createElement("div");
+        document.createElement(
+          "div"
+        );
+
 
       card.className =
         "track-card";
@@ -2178,25 +2247,24 @@ uploadBtn.addEventListener(
 
         </div>
 
-
         <div class="track-title">
           ${safeTitle}
         </div>
-
 
         <div class="track-artist">
           ${safeArtist}
         </div>
 
-
         <div class="track-actions">
 
           <span class="status">
+
             ${
               status === "processing"
                 ? "Processing..."
                 : "Ready"
             }
+
           </span>
 
           <button
@@ -2251,7 +2319,7 @@ uploadBtn.addEventListener(
 
 
     /* =====================================================
-       PLAY TRACK — FIXED
+       PLAY TRACK
     ===================================================== */
 
     async function playTrack(
@@ -2345,7 +2413,9 @@ uploadBtn.addEventListener(
             );
 
 
-          if (queueIndex < 0) {
+          if (
+            queueIndex < 0
+          ) {
 
             queueIndex =
               0;
@@ -2374,11 +2444,6 @@ uploadBtn.addEventListener(
           0;
 
 
-        /*
-          IMPORTANT:
-          Remove old source first
-        */
-
         audioEl.removeAttribute(
           "src"
         );
@@ -2386,19 +2451,11 @@ uploadBtn.addEventListener(
         audioEl.load();
 
 
-        /*
-          Set new Firebase URL
-        */
-
         audioEl.src =
           track.audioUrl;
 
         audioEl.load();
 
-
-        /*
-          Wait for browser to start playback
-        */
 
         await audioEl.play();
 
@@ -2407,7 +2464,6 @@ uploadBtn.addEventListener(
           "✅ PLAYING:",
           track.title
         );
-
 
       } catch (error) {
 
@@ -2449,7 +2505,7 @@ uploadBtn.addEventListener(
 
 
     /* =====================================================
-       NOW PLAYING UI
+       NOW PLAYING
     ===================================================== */
 
     function updateNowPlayingUI(
@@ -2691,14 +2747,697 @@ uploadBtn.addEventListener(
 
 
     /* =====================================================
-       INITIALIZE COMMUNITY
+       AGI DJ
+    ===================================================== */
+
+    const MOOD_KEYWORDS = {
+
+      chill: [
+        "chill",
+        "calm",
+        "relax",
+        "peace",
+        "peaceful",
+        "lofi",
+        "sleep"
+      ],
+
+      sad: [
+        "sad",
+        "emotional",
+        "heartbreak",
+        "broken",
+        "cry",
+        "alone"
+      ],
+
+      happy: [
+        "happy",
+        "joy",
+        "fun",
+        "party",
+        "dance",
+        "good mood"
+      ],
+
+      energetic: [
+        "energy",
+        "energetic",
+        "hype",
+        "gym",
+        "workout",
+        "power",
+        "hard"
+      ],
+
+      romantic: [
+        "romantic",
+        "love",
+        "lover",
+        "couple",
+        "romance"
+      ],
+
+      dark: [
+        "dark",
+        "villain",
+        "evil",
+        "night",
+        "dark vibe"
+      ]
+
+    };
+
+
+    /* =====================================================
+       CREATE AGI SEARCH UI
+    ===================================================== */
+
+    function createSearchUI() {
+
+      const main =
+        document.querySelector(
+          "main"
+        );
+
+
+      if (!main) {
+        return;
+      }
+
+
+      const section =
+        document.createElement(
+          "section"
+        );
+
+
+      section.className =
+        "section";
+
+
+      section.innerHTML = `
+
+        <div class="section-header">
+
+          <h2>
+            🔎 Search & AGI DJ
+          </h2>
+
+          <span>
+            Ask for a vibe
+          </span>
+
+        </div>
+
+
+        <div class="upload-box">
+
+          <div
+            style="
+              display:flex;
+              gap:10px;
+              flex-wrap:wrap;
+            "
+          >
+
+            <input
+              id="agiPrompt"
+              type="text"
+              placeholder="Try: chill songs, sad songs, gym music..."
+              style="
+                flex:1;
+                min-width:220px;
+                background:#080808;
+                color:#fff;
+                border:1px solid #333;
+                border-radius:999px;
+                padding:13px 18px;
+                outline:none;
+              "
+            >
+
+            <button
+              id="agiSearchBtn"
+              class="upload-btn"
+            >
+              ✨ Ask AGI DJ
+            </button>
+
+          </div>
+
+
+          <div
+            id="agiResult"
+            style="
+              margin-top:18px;
+              color:#aaa;
+              line-height:1.6;
+            "
+          >
+            Ask for a mood, genre or type of music.
+          </div>
+
+
+          <div
+            id="agiTracks"
+            class="track-grid"
+            style="margin-top:18px;"
+          ></div>
+
+        </div>
+
+      `;
+
+
+      main.insertBefore(
+        section,
+        main.firstElementChild
+          .nextElementSibling
+      );
+
+
+      document
+        .getElementById(
+          "agiSearchBtn"
+        )
+        .addEventListener(
+          "click",
+          runAGIDJ
+        );
+
+
+      document
+        .getElementById(
+          "agiPrompt"
+        )
+        .addEventListener(
+          "keydown",
+          event => {
+
+            if (
+              event.key ===
+              "Enter"
+            ) {
+
+              runAGIDJ();
+
+            }
+
+          }
+        );
+
+    }
+
+
+    /* =====================================================
+       DETECT MOOD
+    ===================================================== */
+
+    function detectMood(
+      prompt
+    ) {
+
+      const lower =
+        prompt
+          .toLowerCase()
+          .trim();
+
+
+      for (
+        const [
+          mood,
+          words
+        ]
+        of Object.entries(
+          MOOD_KEYWORDS
+        )
+      ) {
+
+        if (
+          words.some(
+            word =>
+              lower.includes(
+                word
+              )
+          )
+        ) {
+
+          return mood;
+
+        }
+
+      }
+
+
+      return null;
+
+    }
+
+
+    /* =====================================================
+       RUN AGI DJ
+    ===================================================== */
+
+    function runAGIDJ() {
+
+      const input =
+        document.getElementById(
+          "agiPrompt"
+        );
+
+
+      const result =
+        document.getElementById(
+          "agiResult"
+        );
+
+
+      const container =
+        document.getElementById(
+          "agiTracks"
+        );
+
+
+      if (!input) {
+        return;
+      }
+
+
+      const prompt =
+        input.value.trim();
+
+
+      if (!prompt) {
+
+        toast(
+          "Ask AGI DJ something first."
+        );
+
+        return;
+
+      }
+
+
+      const mood =
+        detectMood(
+          prompt
+        );
+
+
+      const allTracks =
+        Array.from(
+          trackIndex.values()
+        );
+
+
+      if (!allTracks.length) {
+
+        result.textContent =
+          "Your library is empty. Upload some songs first.";
+
+        container.innerHTML =
+          "";
+
+        return;
+
+      }
+
+
+      let matched =
+        allTracks.filter(
+          track => {
+
+            const text = `
+
+              ${track.title || ""}
+
+              ${track.artist || ""}
+
+              ${track.genre || ""}
+
+              ${track.mood || ""}
+
+              ${track.album || ""}
+
+            `.toLowerCase();
+
+
+            if (mood) {
+
+              if (
+                String(
+                  track.mood || ""
+                )
+                .toLowerCase()
+                === mood
+              ) {
+
+                return true;
+
+              }
+
+            }
+
+
+            return prompt
+              .toLowerCase()
+              .split(/\s+/)
+              .some(
+                word =>
+                  word.length > 2 &&
+                  text.includes(
+                    word
+                  )
+              );
+
+          }
+        );
+
+
+      if (
+        !matched.length
+      ) {
+
+        matched =
+          allTracks;
+
+      }
+
+
+      matched =
+        matched.slice(
+          0,
+          8
+        );
+
+
+      const moodText =
+        mood
+          ? `I found a ${mood} vibe for you.`
+          : "I created a smart queue from your library.";
+
+
+      result.innerHTML = `
+
+        <strong
+          style="color:#fff;"
+        >
+          ✨ AGI DJ
+        </strong>
+
+        <br>
+
+        ${escapeHTML(
+          moodText
+        )}
+
+        <br>
+
+        <span
+          style="
+            font-size:13px;
+            color:#666;
+          "
+        >
+          ${matched.length}
+          track(s) selected.
+        </span>
+
+      `;
+
+
+      container.innerHTML =
+        "";
+
+
+      queue =
+        matched;
+
+
+      queueIndex =
+        0;
+
+
+      matched.forEach(
+        track => {
+
+          trackIndex.set(
+            track.id,
+            track
+          );
+
+
+          container.appendChild(
+            createAGITrackCard(
+              track
+            )
+          );
+
+        }
+      );
+
+    }
+
+
+    /* =====================================================
+       AGI TRACK CARD
+    ===================================================== */
+
+    function createAGITrackCard(
+      track
+    ) {
+
+      const card =
+        document.createElement(
+          "div"
+        );
+
+
+      card.className =
+        "track-card";
+
+
+      const cover =
+        track.albumArtUrl ||
+        "";
+
+
+      card.innerHTML = `
+
+        <div class="cover">
+
+          ${
+            cover
+              ? `
+                <img
+                  src="${escapeHTML(cover)}"
+                  alt=""
+                  loading="lazy"
+                >
+              `
+              : ""
+          }
+
+        </div>
+
+
+        <div class="track-title">
+          ${escapeHTML(
+            track.title ||
+            "Untitled"
+          )}
+        </div>
+
+
+        <div class="track-artist">
+          ${escapeHTML(
+            track.artist ||
+            "Unknown Artist"
+          )}
+        </div>
+
+
+        <div class="track-actions">
+
+          <span class="status">
+
+            ${escapeHTML(
+              track.mood ||
+              track.genre ||
+              "Music"
+            )}
+
+          </span>
+
+
+          <button
+            class="play-small"
+            type="button"
+          >
+            ▶
+          </button>
+
+        </div>
+
+      `;
+
+
+      const button =
+        card.querySelector(
+          ".play-small"
+        );
+
+
+      button.addEventListener(
+        "click",
+        event => {
+
+          event.stopPropagation();
+
+          playTrack(
+            track,
+            queue
+          );
+
+        }
+      );
+
+
+      card.addEventListener(
+        "click",
+        () => {
+
+          playTrack(
+            track,
+            queue
+          );
+
+        }
+      );
+
+
+      return card;
+
+    }
+
+
+    /* =====================================================
+       KEYBOARD SHORTCUTS
+    ===================================================== */
+
+    document.addEventListener(
+      "keydown",
+      event => {
+
+        const tag =
+          document.activeElement?.tagName;
+
+
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA"
+        ) {
+
+          return;
+
+        }
+
+
+        /* SPACE */
+
+        if (
+          event.code ===
+          "Space"
+        ) {
+
+          event.preventDefault();
+
+
+          if (
+            currentTrack
+          ) {
+
+            if (
+              audioEl.paused
+            ) {
+
+              audioEl
+                .play()
+                .catch(
+                  console.error
+                );
+
+            } else {
+
+              audioEl.pause();
+
+            }
+
+          }
+
+        }
+
+
+        /* RIGHT ARROW */
+
+        if (
+          event.code ===
+          "ArrowRight"
+        ) {
+
+          if (
+            currentTrack
+          ) {
+
+            audioEl.currentTime =
+              Math.min(
+                audioEl.currentTime + 5,
+                audioEl.duration ||
+                Infinity
+              );
+
+          }
+
+        }
+
+
+        /* LEFT ARROW */
+
+        if (
+          event.code ===
+          "ArrowLeft"
+        ) {
+
+          if (
+            currentTrack
+          ) {
+
+            audioEl.currentTime =
+              Math.max(
+                audioEl.currentTime - 5,
+                0
+              );
+
+          }
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       INITIALIZE
     ===================================================== */
 
     subscribeToCommunity();
 
+    createSearchUI();
+
 
     /* =====================================================
-       GLOBAL DEBUG
+       DEBUG OBJECT
     ===================================================== */
 
     window.RRJIFY = {
@@ -2708,12 +3447,13 @@ uploadBtn.addEventListener(
 
       playTrack,
 
-      queue,
-
       trackIndex,
 
       getCurrentTrack:
-        () => currentTrack
+        () => currentTrack,
+
+      getQueue:
+        () => queue
 
     };
 
@@ -2722,667 +3462,11 @@ uploadBtn.addEventListener(
       "🚀 RRJIFY initialized successfully."
     );
 
+    console.log(
+      "✨ AGI DJ initialized."
+    );
+
   </script>
 
 </body>
 </html>
-<script type="module">
-
-/* =========================================================
-   RRJIFY — AGI DJ / SMART SEARCH
-========================================================= */
-
-const MOOD_KEYWORDS = {
-
-  chill: [
-    "chill",
-    "calm",
-    "relax",
-    "peace",
-    "peaceful",
-    "lofi",
-    "sleep"
-  ],
-
-  sad: [
-    "sad",
-    "emotional",
-    "heartbreak",
-    "broken",
-    "cry",
-    "alone"
-  ],
-
-  happy: [
-    "happy",
-    "joy",
-    "fun",
-    "party",
-    "dance",
-    "good mood"
-  ],
-
-  energetic: [
-    "energy",
-    "energetic",
-    "hype",
-    "gym",
-    "workout",
-    "power",
-    "hard"
-  ],
-
-  romantic: [
-    "romantic",
-    "love",
-    "lover",
-    "couple",
-    "romance"
-  ],
-
-  dark: [
-    "dark",
-    "villain",
-    "evil",
-    "night",
-    "dark vibe"
-  ]
-
-};
-
-
-/* =========================================================
-   SMART SEARCH UI
-========================================================= */
-
-function createSearchUI() {
-
-  const main =
-    document.querySelector("main");
-
-  if (!main) return;
-
-
-  const section =
-    document.createElement("section");
-
-  section.className =
-    "section";
-
-
-  section.innerHTML = `
-
-    <div class="section-header">
-
-      <h2>
-        🔎 Search & AGI DJ
-      </h2>
-
-      <span>
-        Ask for a vibe
-      </span>
-
-    </div>
-
-
-    <div class="upload-box">
-
-      <div
-        style="
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-        "
-      >
-
-        <input
-          id="agiPrompt"
-          type="text"
-          placeholder="Try: chill songs, sad songs, gym music..."
-          style="
-            flex:1;
-            min-width:220px;
-            background:#080808;
-            color:#fff;
-            border:1px solid #333;
-            border-radius:999px;
-            padding:13px 18px;
-            outline:none;
-          "
-        >
-
-        <button
-          id="agiSearchBtn"
-          class="upload-btn"
-        >
-          ✨ Ask AGI DJ
-        </button>
-
-      </div>
-
-
-      <div
-        id="agiResult"
-        style="
-          margin-top:18px;
-          color:#aaa;
-          line-height:1.6;
-        "
-      >
-        Ask for a mood, genre or type of music.
-      </div>
-
-
-      <div
-        id="agiTracks"
-        class="track-grid"
-        style="margin-top:18px;"
-      ></div>
-
-    </div>
-
-  `;
-
-
-  main.insertBefore(
-    section,
-    main.firstElementChild.nextElementSibling
-  );
-
-
-  document
-    .getElementById("agiSearchBtn")
-    .addEventListener(
-      "click",
-      runAGIDJ
-    );
-
-
-  document
-    .getElementById("agiPrompt")
-    .addEventListener(
-      "keydown",
-      event => {
-
-        if (
-          event.key === "Enter"
-        ) {
-
-          runAGIDJ();
-
-        }
-
-      }
-    );
-
-}
-
-
-/* =========================================================
-   GET MOOD
-========================================================= */
-
-function detectMood(prompt) {
-
-  const lower =
-    prompt
-      .toLowerCase()
-      .trim();
-
-
-  for (
-    const [mood, words]
-    of Object.entries(
-      MOOD_KEYWORDS
-    )
-  ) {
-
-    if (
-      words.some(
-        word =>
-          lower.includes(word)
-      )
-    ) {
-
-      return mood;
-
-    }
-
-  }
-
-
-  return null;
-
-}
-
-
-/* =========================================================
-   AGI DJ
-========================================================= */
-
-function runAGIDJ() {
-
-  const input =
-    document.getElementById(
-      "agiPrompt"
-    );
-
-  const result =
-    document.getElementById(
-      "agiResult"
-    );
-
-  const container =
-    document.getElementById(
-      "agiTracks"
-    );
-
-
-  if (!input) return;
-
-
-  const prompt =
-    input.value.trim();
-
-
-  if (!prompt) {
-
-    toast(
-      "Ask AGI DJ something first."
-    );
-
-    return;
-
-  }
-
-
-  const mood =
-    detectMood(
-      prompt
-    );
-
-
-  const allTracks =
-    Array.from(
-      trackIndex.values()
-    );
-
-
-  if (!allTracks.length) {
-
-    result.textContent =
-      "Your library is empty. Upload some songs first.";
-
-    container.innerHTML =
-      "";
-
-    return;
-
-  }
-
-
-  let matched =
-    allTracks.filter(
-      track => {
-
-        const text = `
-
-          ${track.title || ""}
-
-          ${track.artist || ""}
-
-          ${track.genre || ""}
-
-          ${track.mood || ""}
-
-          ${track.album || ""}
-
-        `.toLowerCase();
-
-
-        if (mood) {
-
-          if (
-            String(
-              track.mood || ""
-            ).toLowerCase()
-            === mood
-          ) {
-
-            return true;
-
-          }
-
-        }
-
-
-        return prompt
-          .toLowerCase()
-          .split(/\s+/)
-          .some(
-            word =>
-              word.length > 2 &&
-              text.includes(word)
-          );
-
-      }
-    );
-
-
-  if (!matched.length) {
-
-    matched =
-      allTracks;
-
-  }
-
-
-  matched =
-    matched.slice(
-      0,
-      8
-    );
-
-
-  const moodText =
-    mood
-      ? `I found a ${mood} vibe for you.`
-      : "I created a smart queue from your library.";
-
-
-  result.innerHTML = `
-
-    <strong
-      style="color:#fff;"
-    >
-      ✨ AGI DJ
-    </strong>
-
-    <br>
-
-    ${moodText}
-
-    <br>
-
-    <span
-      style="font-size:13px;color:#666;"
-    >
-      ${matched.length} track(s) selected.
-    </span>
-
-  `;
-
-
-  container.innerHTML =
-    "";
-
-
-  matched.forEach(
-    track => {
-
-      trackIndex.set(
-        track.id,
-        track
-      );
-
-
-      container.appendChild(
-        createAGITrackCard(
-          track
-        )
-      );
-
-    }
-  );
-
-
-  /*
-    Make AGI results the current queue
-  */
-
-  queue =
-    matched;
-
-
-  queueIndex =
-    0;
-
-}
-
-
-/* =========================================================
-   AGI TRACK CARD
-========================================================= */
-
-function createAGITrackCard(
-  track
-) {
-
-  const card =
-    document.createElement(
-      "div"
-    );
-
-
-  card.className =
-    "track-card";
-
-
-  const cover =
-    track.albumArtUrl ||
-    "";
-
-
-  card.innerHTML = `
-
-    <div class="cover">
-
-      ${
-        cover
-          ? `
-            <img
-              src="${escapeHTML(cover)}"
-              alt=""
-              loading="lazy"
-            >
-          `
-          : ""
-      }
-
-    </div>
-
-
-    <div class="track-title">
-      ${escapeHTML(
-        track.title ||
-        "Untitled"
-      )}
-    </div>
-
-
-    <div class="track-artist">
-      ${escapeHTML(
-        track.artist ||
-        "Unknown Artist"
-      )}
-    </div>
-
-
-    <div class="track-actions">
-
-      <span
-        class="status"
-      >
-        ${escapeHTML(
-          track.mood ||
-          track.genre ||
-          "Music"
-        )}
-      </span>
-
-      <button
-        class="play-small"
-      >
-        ▶
-      </button>
-
-    </div>
-
-  `;
-
-
-  const button =
-    card.querySelector(
-      ".play-small"
-    );
-
-
-  button.addEventListener(
-    "click",
-    event => {
-
-      event.stopPropagation();
-
-      playTrack(
-        track,
-        queue
-      );
-
-    }
-  );
-
-
-  card.addEventListener(
-    "click",
-    () => {
-
-      playTrack(
-        track,
-        queue
-      );
-
-    }
-  );
-
-
-  return card;
-
-}
-
-
-/* =========================================================
-   KEYBOARD SHORTCUTS
-========================================================= */
-
-document.addEventListener(
-  "keydown",
-  event => {
-
-    /*
-      Don't trigger shortcuts
-      while typing.
-    */
-
-    const tag =
-      document.activeElement?.tagName;
-
-
-    if (
-      tag === "INPUT" ||
-      tag === "TEXTAREA"
-    ) {
-
-      return;
-
-    }
-
-
-    /*
-      Space = play/pause
-    */
-
-    if (
-      event.code === "Space"
-    ) {
-
-      event.preventDefault();
-
-      if (
-        currentTrack
-      ) {
-
-        if (
-          audioEl.paused
-        ) {
-
-          audioEl.play()
-            .catch(
-              console.error
-            );
-
-        } else {
-
-          audioEl.pause();
-
-        }
-
-      }
-
-    }
-
-
-    /*
-      Arrow right = next
-    */
-
-    if (
-      event.code === "ArrowRight"
-    ) {
-
-      if (
-        currentTrack
-      ) {
-
-        audioEl.currentTime =
-          Math.min(
-            audioEl.currentTime + 5,
-            audioEl.duration || Infinity
-          );
-
-      }
-
-    }
-
-
-    /*
-      Arrow left = previous 5 sec
-    */
-
-    if (
-      event.code === "ArrowLeft"
-    ) {
-
-      audioEl.currentTime =
-        Math.max(
-          audioEl.currentTime - 5,
-          0
-        );
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   CREATE UI
-========================================================= */
-
-createSearchUI();
-
-
-console.log(
-  "✨ AGI DJ initialized."
-);
-
-</script>
