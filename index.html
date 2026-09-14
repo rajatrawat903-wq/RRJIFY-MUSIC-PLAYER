@@ -1436,7 +1436,10 @@
        UPLOAD SONG
     ===================================================== */
 
- async function uploadSong() {
+uploadBtn.addEventListener(
+  "click",
+  uploadSong
+);
 
   if (!currentUser) {
     toast("Please sign in first.");
