@@ -1,1453 +1,3215 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>RRJIFY — Music, powered by AGI</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!--
-  ============================================================================
-  RRJIFY — single-file reference build
-  ============================================================================
-  WHAT THIS FILE IS
-  A self-contained HTML/CSS/JS app implementing:
-    1. Spotify-style dark UI (sidebar / header / feed / bottom player)
-    2. Google Sign-In via Firebase Auth, with per-user auto-synced library
-    3. Drag & drop audio upload (.mp3/.wav/.flac) to the user's PERSONAL
-       library in Firebase Storage + Firestore, with an explicit opt-in
-       "Publish to my public profile" toggle per track.
-    4. A lightweight on-device metadata tagger (ID3 via jsmediatags +
-       Web Audio duration/energy analysis) that fills in title/artist/
-       album-art/approx. BPM automatically on upload.
-    5. "RRJIFY AGI DJ" — a conversational panel that turns natural-language
-       prompts ("calm hindi acoustic for late night studying") into a
-       filtered queue built from the user's own library + public tracks
-       they've been granted access to, using a small rules/embedding
-       scorer that runs client-side, with an optional call out to a
-       server-side LLM proxy for richer free-text understanding.
+  <title>RRJIFY — Music, powered by AGI</title>
 
-  WHAT'S INTENTIONALLY NOT HERE
-  This build does NOT auto-broadcast every user's upload to every other
-  user. That "instant global sync of anyone's uploaded MP3s" pattern is,
-  architecturally, an unlicensed-distribution mechanism — the same shape
-  regardless of framing. Instead:
-    - New uploads are private by default.
-    - A user can flip "Publish to public profile" on a track they own the
-      rights to (their own recordings, releases they're authorized to
-      share, Creative-Commons/royalty-free files, etc).
-    - Published tracks show up in the "Community" feed for others to find.
-  Swap in a rights/licensing check on the Cloud Function described below
-  before you flip that default in production.
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  HOW TO WIRE IT UP
-  1. Create a Firebase project → enable: Authentication (Google provider),
-     Firestore, Storage.
-  2. Paste your config into FIREBASE_CONFIG below.
-  3. Deploy the two Cloud Functions stubbed in "SERVER-SIDE PIECES" at the
-     bottom of this file (metadata deep-analysis + AGI DJ NL endpoint).
-  4. Open this file (or serve it statically) — everything else runs client
-     side against Firebase.
-  ============================================================================
--->
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #080808;
+      color: #fff;
+      min-height: 100vh;
+    }
 
-<!-- Firebase v9 modular SDK (CDN, ESM) -->
-<script type="module">
-  window.__RRJIFY_FIREBASE_READY__ = false;
-</script>
+    button,
+    input {
+      font: inherit;
+    }
 
-<style>
-  /* ==========================================================================
-     DESIGN TOKENS
-     Base palette: near-black stage (#0A0B0D) with the brand's own neon-green
-     (#1DB954) as the single accent, a slightly lifted surface (#161819) for
-     cards, hairline borders (#242629) instead of soft drop shadows, and one
-     warm-white text color (#F5F7F6) so the accent stays the only saturated
-     color on screen.
-     Type: "Inter" for UI chrome (tight, neutral, legible at small sizes) and
-     "Manrope" for the DJ panel's conversational text, so the assistant reads
-     distinct from the library chrome.
-     ========================================================================== */
-  :root{
-    --bg-void:        #0A0B0D;
-    --bg-surface:     #131416;
-    --bg-elevated:    #1B1D1F;
-    --bg-hover:       #232527;
-    --border-hair:    #242629;
-    --border-hair-2:  #2E3033;
-    --text-primary:   #F5F7F6;
-    --text-secondary: #9CA3A6;
-    --text-tertiary:  #6B7275;
-    --accent:         #1DB954;
-    --accent-hover:   #23D465;
-    --accent-dim:     rgba(29,185,84,0.14);
-    --accent-line:    rgba(29,185,84,0.35);
-    --danger:         #E85D5D;
-    --radius-s:       6px;
-    --radius-m:       10px;
-    --radius-l:       16px;
-    --sidebar-w:      248px;
-    --player-h:       88px;
-    --header-h:       64px;
-    --font-ui:        'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-dj:         'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
-  }
+    button {
+      cursor: pointer;
+    }
 
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap');
+    .hidden {
+      display: none !important;
+    }
 
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  html,body{ height:100%; }
-  body{
-    background:var(--bg-void);
-    color:var(--text-primary);
-    font-family:var(--font-ui);
-    overflow:hidden;
-    -webkit-font-smoothing:antialiased;
-  }
-  ::selection{ background:var(--accent-dim); color:var(--accent-hover); }
-  ::-webkit-scrollbar{ width:10px; height:10px; }
-  ::-webkit-scrollbar-thumb{ background:var(--border-hair-2); border-radius:8px; }
-  ::-webkit-scrollbar-track{ background:transparent; }
-  a{ color:inherit; text-decoration:none; }
-  button{ font-family:inherit; cursor:pointer; border:none; background:none; color:inherit; }
-  input{ font-family:inherit; }
-  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+    /* =========================
+       HEADER
+    ========================= */
 
-  /* ---------- App shell ---------- */
-  .app{
-    display:grid;
-    grid-template-columns:var(--sidebar-w) 1fr;
-    grid-template-rows:var(--header-h) 1fr var(--player-h);
-    grid-template-areas:
-      "sidebar header"
-      "sidebar main"
-      "player  player";
-    height:100vh;
-  }
+    header {
+      height: 70px;
+      background: #101010;
+      border-bottom: 1px solid #242424;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
 
-  /* ---------- Sidebar ---------- */
-  .sidebar{
-    grid-area:sidebar;
-    background:var(--bg-void);
-    border-right:1px solid var(--border-hair);
-    padding:20px 14px;
-    display:flex;
-    flex-direction:column;
-    gap:22px;
-    overflow-y:auto;
-  }
-  .brand{
-    display:flex; align-items:center; gap:10px;
-    padding:4px 8px 8px;
-  }
-  .brand-mark{
-    width:30px; height:30px; border-radius:8px;
-    background:var(--accent);
-    display:flex; align-items:center; justify-content:center;
-    font-weight:800; color:#06120A; font-size:15px;
-  }
-  .brand-word{ font-weight:800; font-size:19px; letter-spacing:-0.02em; }
+    .logo {
+      font-size: 25px;
+      font-weight: 900;
+      letter-spacing: -1px;
+    }
 
-  .nav-group{ display:flex; flex-direction:column; gap:2px; }
-  .nav-label{
-    font-size:11px; color:var(--text-tertiary); font-weight:600;
-    padding:6px 10px 4px; text-transform:uppercase; letter-spacing:0.06em;
-  }
-  .nav-item{
-    display:flex; align-items:center; gap:12px;
-    padding:9px 10px; border-radius:var(--radius-s);
-    color:var(--text-secondary); font-size:14px; font-weight:600;
-    transition:background .12s ease, color .12s ease;
-  }
-  .nav-item svg{ width:18px; height:18px; flex-shrink:0; }
-  .nav-item:hover{ background:var(--bg-elevated); color:var(--text-primary); }
-  .nav-item.active{ background:var(--accent-dim); color:var(--accent-hover); }
+    .logo span {
+      color: #1ed760;
+    }
 
-  .sidebar-divider{ height:1px; background:var(--border-hair); margin:2px 0; }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-  .playlist-list{ display:flex; flex-direction:column; gap:1px; overflow-y:auto; flex:1; }
-  .playlist-item{
-    padding:8px 10px; border-radius:var(--radius-s);
-    font-size:13.5px; color:var(--text-secondary);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
-  .playlist-item:hover{ background:var(--bg-elevated); color:var(--text-primary); }
+    .user-name {
+      color: #aaa;
+      font-size: 14px;
+    }
 
-  .upload-tile{
-    border:1px dashed var(--border-hair-2);
-    border-radius:var(--radius-m);
-    padding:14px 10px;
-    text-align:center;
-    color:var(--text-tertiary);
-    font-size:12.5px;
-    line-height:1.5;
-    transition:border-color .15s ease, color .15s ease, background .15s ease;
-  }
-  .upload-tile.drag-over{
-    border-color:var(--accent);
-    color:var(--accent-hover);
-    background:var(--accent-dim);
-  }
-  .upload-tile button{
-    display:block; margin:8px auto 0; color:var(--accent);
-    font-weight:700; font-size:12.5px;
-  }
+    .google-btn,
+    .logout-btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-weight: 700;
+    }
 
-  /* ---------- Header ---------- */
-  .header{
-    grid-area:header;
-    border-bottom:1px solid var(--border-hair);
-    display:flex; align-items:center; justify-content:space-between;
-    padding:0 24px;
-    gap:20px;
-    background:rgba(10,11,13,0.85);
-    backdrop-filter:blur(10px);
-  }
-  .search-wrap{
-    flex:1; max-width:420px;
-    display:flex; align-items:center; gap:10px;
-    background:var(--bg-elevated);
-    border:1px solid var(--border-hair);
-    border-radius:999px;
-    padding:9px 16px;
-  }
-  .search-wrap svg{ width:16px; height:16px; color:var(--text-tertiary); flex-shrink:0; }
-  .search-wrap input{
-    background:none; border:none; color:var(--text-primary);
-    font-size:13.5px; width:100%;
-  }
-  .search-wrap input::placeholder{ color:var(--text-tertiary); }
+    .google-btn {
+      background: #fff;
+      color: #111;
+    }
 
-  .header-right{ display:flex; align-items:center; gap:14px; }
-  .dj-toggle{
-    display:flex; align-items:center; gap:8px;
-    background:var(--accent-dim);
-    border:1px solid var(--accent-line);
-    color:var(--accent-hover);
-    padding:8px 14px; border-radius:999px;
-    font-size:13px; font-weight:700;
-    transition:background .15s ease;
-  }
-  .dj-toggle:hover{ background:rgba(29,185,84,0.22); }
-  .dj-toggle .pulse{
-    width:7px; height:7px; border-radius:50%; background:var(--accent);
-    box-shadow:0 0 0 0 rgba(29,185,84,0.6);
-    animation:pulse 2s infinite;
-  }
-  @keyframes pulse{
-    0%{ box-shadow:0 0 0 0 rgba(29,185,84,0.55); }
-    70%{ box-shadow:0 0 0 7px rgba(29,185,84,0); }
-    100%{ box-shadow:0 0 0 0 rgba(29,185,84,0); }
-  }
+    .logout-btn {
+      background: #222;
+      color: #fff;
+    }
 
-  .profile-btn{
-    display:flex; align-items:center; gap:9px;
-    padding:5px 12px 5px 5px; border-radius:999px;
-    background:var(--bg-elevated); border:1px solid var(--border-hair);
-    font-size:13px; font-weight:600;
-  }
-  .avatar{
-    width:28px; height:28px; border-radius:50%;
-    background:var(--accent); color:#06120A;
-    display:flex; align-items:center; justify-content:center;
-    font-weight:800; font-size:12px; overflow:hidden;
-  }
-  .avatar img{ width:100%; height:100%; object-fit:cover; }
+    /* =========================
+       MAIN
+    ========================= */
 
-  .btn-primary{
-    background:var(--accent); color:#06120A; font-weight:700;
-    padding:9px 18px; border-radius:999px; font-size:13.5px;
-    transition:background .15s ease, transform .1s ease;
-  }
-  .btn-primary:hover{ background:var(--accent-hover); }
-  .btn-primary:active{ transform:scale(0.97); }
+    main {
+      width: min(1200px, 94%);
+      margin: auto;
+      padding: 35px 0 150px;
+    }
 
-  /* ---------- Main feed ---------- */
-  .main{
-    grid-area:main;
-    overflow-y:auto;
-    padding:28px 32px 40px;
-  }
-  .section{ margin-bottom:38px; }
-  .section-head{
-    display:flex; align-items:baseline; justify-content:space-between;
-    margin-bottom:14px;
-  }
-  .section-title{ font-size:20px; font-weight:800; letter-spacing:-0.01em; }
-  .section-sub{ font-size:12.5px; color:var(--text-tertiary); margin-top:2px; }
-  .section-link{ font-size:12.5px; font-weight:700; color:var(--text-secondary); }
-  .section-link:hover{ color:var(--accent-hover); }
+    .hero {
+      background:
+        radial-gradient(circle at top right, rgba(30,215,96,.2), transparent 40%),
+        linear-gradient(135deg, #151515, #0c0c0c);
+      border: 1px solid #292929;
+      border-radius: 24px;
+      padding: 35px;
+      margin-bottom: 30px;
+    }
 
-  .card-row{
-    display:grid;
-    grid-auto-flow:column;
-    grid-auto-columns:168px;
-    gap:16px;
-    overflow-x:auto;
-    padding-bottom:6px;
-  }
-  .track-card{
-    background:var(--bg-surface);
-    border:1px solid var(--border-hair);
-    border-radius:var(--radius-m);
-    padding:12px;
-    cursor:pointer;
-    transition:background .15s ease, border-color .15s ease;
-    position:relative;
-  }
-  .track-card:hover{ background:var(--bg-elevated); border-color:var(--border-hair-2); }
-  .art-wrap{ position:relative; margin-bottom:10px; }
-  .art{
-    width:100%; aspect-ratio:1/1; border-radius:var(--radius-s);
-    background:linear-gradient(135deg,#1B1D1F,#0A0B0D);
-    display:flex; align-items:center; justify-content:center;
-    color:var(--text-tertiary); font-size:26px; font-weight:800;
-    overflow:hidden;
-  }
-  .art img{ width:100%; height:100%; object-fit:cover; }
-  .play-fab{
-    position:absolute; right:6px; bottom:6px;
-    width:36px; height:36px; border-radius:50%;
-    background:var(--accent); color:#06120A;
-    display:flex; align-items:center; justify-content:center;
-    opacity:0; transform:translateY(6px);
-    transition:opacity .15s ease, transform .15s ease;
-    box-shadow:0 6px 16px rgba(0,0,0,0.4);
-  }
-  .track-card:hover .play-fab{ opacity:1; transform:translateY(0); }
-  .play-fab svg{ width:15px; height:15px; margin-left:1px; }
-  .track-title{ font-size:13.5px; font-weight:700; margin-bottom:3px;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .track-meta{ font-size:12px; color:var(--text-tertiary);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .track-badges{ display:flex; gap:5px; margin-top:8px; }
-  .badge{
-    font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;
-    background:var(--bg-hover); color:var(--text-tertiary); letter-spacing:0.02em;
-  }
-  .badge.bpm{ color:var(--accent-hover); background:var(--accent-dim); }
+    .hero h1 {
+      font-size: clamp(30px, 5vw, 55px);
+      margin-bottom: 12px;
+    }
 
-  .empty-state{
-    border:1px dashed var(--border-hair-2); border-radius:var(--radius-l);
-    padding:38px 24px; text-align:center; color:var(--text-tertiary);
-    font-size:13.5px; max-width:440px;
-  }
-  .empty-state strong{ display:block; color:var(--text-primary); font-size:15px; margin-bottom:6px; }
+    .hero h1 span {
+      color: #1ed760;
+    }
 
-  /* ---------- Bottom player ---------- */
-  .player{
-    grid-area:player;
-    border-top:1px solid var(--border-hair);
-    background:var(--bg-void);
-    display:grid;
-    grid-template-columns:1fr 2fr 1fr;
-    align-items:center;
-    padding:0 20px;
-    gap:18px;
-  }
-  .now-playing{ display:flex; align-items:center; gap:12px; min-width:0; }
-  .np-art{
-    width:52px; height:52px; border-radius:var(--radius-s);
-    background:var(--bg-elevated); flex-shrink:0; overflow:hidden;
-    display:flex; align-items:center; justify-content:center; color:var(--text-tertiary);
-  }
-  .np-art img{ width:100%; height:100%; object-fit:cover; }
-  .np-text{ min-width:0; }
-  .np-title{ font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .np-artist{ font-size:12px; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .np-like{ color:var(--text-tertiary); flex-shrink:0; }
-  .np-like.liked{ color:var(--accent); }
-  .np-like svg{ width:17px; height:17px; }
+    .hero p {
+      color: #aaa;
+      max-width: 700px;
+      line-height: 1.6;
+    }
 
-  .transport{ display:flex; flex-direction:column; align-items:center; gap:8px; }
-  .transport-controls{ display:flex; align-items:center; gap:18px; }
-  .transport-controls button{ color:var(--text-secondary); display:flex; }
-  .transport-controls button:hover{ color:var(--text-primary); }
-  .transport-controls svg{ width:17px; height:17px; }
-  .transport-controls .toggled{ color:var(--accent); }
-  .play-pause{
-    width:34px; height:34px; border-radius:50%; background:var(--text-primary);
-    color:var(--bg-void); display:flex; align-items:center; justify-content:center;
-  }
-  .play-pause:hover{ background:#fff; }
-  .play-pause svg{ width:15px; height:15px; }
+    /* =========================
+       SECTIONS
+    ========================= */
 
-  .seek-row{ display:flex; align-items:center; gap:9px; width:100%; }
-  .time{ font-size:11px; color:var(--text-tertiary); width:36px; text-align:center; flex-shrink:0; font-variant-numeric:tabular-nums; }
-  .seek-bar{ flex:1; -webkit-appearance:none; height:3px; border-radius:2px; background:var(--border-hair-2); outline:none; }
-  .seek-bar::-webkit-slider-thumb{ -webkit-appearance:none; width:11px; height:11px; border-radius:50%; background:var(--text-primary); cursor:pointer; opacity:0; transition:opacity .1s; }
-  .seek-bar:hover::-webkit-slider-thumb{ opacity:1; }
+    .section {
+      margin-top: 35px;
+    }
 
-  .player-extra{ display:flex; align-items:center; justify-content:flex-end; gap:14px; }
-  .player-extra button{ color:var(--text-secondary); display:flex; }
-  .player-extra button:hover{ color:var(--text-primary); }
-  .player-extra svg{ width:16px; height:16px; }
-  .volume-row{ display:flex; align-items:center; gap:7px; width:110px; }
-  .volume-bar{ -webkit-appearance:none; flex:1; height:3px; border-radius:2px; background:var(--border-hair-2); }
-  .volume-bar::-webkit-slider-thumb{ -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--text-primary); cursor:pointer; }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
 
-  /* ---------- AGI DJ panel ---------- */
-  .dj-panel{
-    position:fixed; top:0; right:-400px; width:380px; height:100vh;
-    background:var(--bg-surface); border-left:1px solid var(--border-hair);
-    z-index:50; display:flex; flex-direction:column;
-    transition:right .22s cubic-bezier(.2,.8,.2,1);
-    font-family:var(--font-dj);
-  }
-  .dj-panel.open{ right:0; }
-  .dj-head{
-    padding:18px 18px 14px; border-bottom:1px solid var(--border-hair);
-    display:flex; align-items:center; justify-content:space-between;
-  }
-  .dj-head-title{ display:flex; align-items:center; gap:9px; font-family:var(--font-ui); }
-  .dj-avatar{
-    width:30px; height:30px; border-radius:9px; background:var(--accent);
-    display:flex; align-items:center; justify-content:center; flex-shrink:0;
-  }
-  .dj-avatar svg{ width:16px; height:16px; color:#06120A; }
-  .dj-head-title div strong{ display:block; font-size:14px; font-weight:800; }
-  .dj-head-title div span{ font-size:11.5px; color:var(--text-tertiary); }
-  .dj-close{ color:var(--text-tertiary); padding:6px; }
-  .dj-close:hover{ color:var(--text-primary); }
+    .section-header h2 {
+      font-size: 22px;
+    }
 
-  .dj-body{ flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
-  .dj-msg{ max-width:88%; font-size:13.5px; line-height:1.5; }
-  .dj-msg.assistant{
-    align-self:flex-start; background:var(--bg-elevated);
-    border:1px solid var(--border-hair); padding:11px 13px; border-radius:12px 12px 12px 3px;
-  }
-  .dj-msg.user{
-    align-self:flex-end; background:var(--accent-dim); color:var(--text-primary);
-    border:1px solid var(--accent-line); padding:11px 13px; border-radius:12px 12px 3px 12px;
-  }
-  .dj-chip-row{ display:flex; flex-wrap:wrap; gap:7px; margin-top:2px; }
-  .dj-chip{
-    font-size:11.5px; font-weight:600; padding:6px 11px; border-radius:999px;
-    background:var(--bg-hover); border:1px solid var(--border-hair-2); color:var(--text-secondary);
-  }
-  .dj-chip:hover{ border-color:var(--accent-line); color:var(--accent-hover); }
+    .section-header span {
+      color: #777;
+      font-size: 13px;
+    }
 
-  .dj-result-list{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
-  .dj-result{
-    display:flex; align-items:center; gap:10px; padding:8px;
-    border-radius:var(--radius-s); background:var(--bg-void);
-    border:1px solid var(--border-hair);
-  }
-  .dj-result:hover{ border-color:var(--accent-line); }
-  .dj-result .r-art{ width:34px; height:34px; border-radius:5px; background:var(--bg-elevated); flex-shrink:0; overflow:hidden; }
-  .dj-result .r-art img{ width:100%; height:100%; object-fit:cover; }
-  .dj-result .r-text{ min-width:0; flex:1; }
-  .dj-result .r-title{ font-size:12.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .dj-result .r-meta{ font-size:11px; color:var(--text-tertiary); }
+    /* =========================
+       UPLOAD
+    ========================= */
 
-  .dj-input-row{
-    padding:14px 16px; border-top:1px solid var(--border-hair);
-    display:flex; align-items:center; gap:8px;
-  }
-  .dj-input-row input{
-    flex:1; background:var(--bg-elevated); border:1px solid var(--border-hair);
-    border-radius:999px; padding:10px 15px; font-size:13px; color:var(--text-primary);
-  }
-  .dj-input-row input::placeholder{ color:var(--text-tertiary); }
-  .dj-send{
-    width:36px; height:36px; border-radius:50%; background:var(--accent);
-    color:#06120A; display:flex; align-items:center; justify-content:center; flex-shrink:0;
-  }
-  .dj-send svg{ width:15px; height:15px; }
-  .dj-send:disabled{ opacity:0.4; cursor:default; }
+    .upload-box {
+      background: #121212;
+      border: 1px solid #282828;
+      border-radius: 20px;
+      padding: 25px;
+    }
 
-  .dj-thinking{ display:flex; gap:4px; align-self:flex-start; padding:8px 4px; }
-  .dj-thinking span{ width:6px; height:6px; border-radius:50%; background:var(--text-tertiary); animation:bounce 1.2s infinite ease-in-out; }
-  .dj-thinking span:nth-child(2){ animation-delay:.15s; }
-  .dj-thinking span:nth-child(3){ animation-delay:.3s; }
-  @keyframes bounce{ 0%,80%,100%{ transform:translateY(0); opacity:.4; } 40%{ transform:translateY(-4px); opacity:1; } }
+    .upload-box h3 {
+      margin-bottom: 18px;
+    }
 
-  /* ---------- Auth gate ---------- */
-  .auth-gate{
-    position:fixed; inset:0; background:var(--bg-void); z-index:100;
-    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:22px;
-  }
-  .auth-gate .brand-mark{ width:52px; height:52px; border-radius:14px; font-size:24px; }
-  .auth-gate h1{ font-size:26px; font-weight:800; letter-spacing:-0.02em; }
-  .auth-gate p{ color:var(--text-secondary); font-size:14px; max-width:320px; text-align:center; line-height:1.5; }
-  .google-btn{
-    display:flex; align-items:center; gap:10px; background:#fff; color:#1F1F1F;
-    padding:12px 22px; border-radius:999px; font-weight:700; font-size:14px;
-  }
-  .google-btn:hover{ background:#F1F1F1; }
-  .google-btn svg{ width:18px; height:18px; }
-  .auth-hidden{ display:none !important; }
+    .file-input {
+      width: 100%;
+      padding: 16px;
+      background: #080808;
+      border: 1px dashed #444;
+      border-radius: 14px;
+      color: #aaa;
+      margin-bottom: 15px;
+    }
 
-  .toast-stack{ position:fixed; bottom:calc(var(--player-h) + 16px); left:50%; transform:translateX(-50%); z-index:80; display:flex; flex-direction:column; gap:8px; align-items:center; }
-  .toast{
-    background:var(--bg-elevated); border:1px solid var(--border-hair-2);
-    padding:10px 16px; border-radius:999px; font-size:12.5px; font-weight:600;
-    box-shadow:0 8px 24px rgba(0,0,0,0.4); animation:toastIn .18s ease;
-  }
-  @keyframes toastIn{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:translateY(0);} }
+    .upload-btn {
+      background: #1ed760;
+      color: #000;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 22px;
+      font-weight: 800;
+    }
 
-  @media (max-width: 860px){
-    :root{ --sidebar-w:0px; }
-    .sidebar{ display:none; }
-    .app{ grid-template-columns:1fr; grid-template-areas:"header" "main" "player"; }
-    .dj-panel{ width:100%; right:-100%; }
-  }
-</style>
+    .upload-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .progress-wrap {
+      margin-top: 15px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #292929;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    .progress {
+      height: 100%;
+      width: 0%;
+      background: #1ed760;
+      transition: width .2s;
+    }
+
+    .progress-text {
+      color: #888;
+      font-size: 13px;
+      margin-top: 7px;
+    }
+
+    /* =========================
+       TRACK GRID
+    ========================= */
+
+    .track-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 18px;
+    }
+
+    .track-card {
+      background: #121212;
+      border: 1px solid #242424;
+      border-radius: 18px;
+      padding: 13px;
+      transition: .2s;
+      cursor: pointer;
+    }
+
+    .track-card:hover {
+      transform: translateY(-3px);
+      background: #181818;
+      border-color: #333;
+    }
+
+    .cover {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 13px;
+      background: linear-gradient(135deg, #1ed760, #101010);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .track-title {
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .track-artist {
+      color: #888;
+      margin-top: 5px;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .track-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    .play-small {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 50%;
+      background: #1ed760;
+      color: #000;
+      font-weight: 900;
+    }
+
+    .status {
+      font-size: 11px;
+      color: #777;
+    }
+
+    .empty {
+      color: #666;
+      padding: 30px 0;
+      text-align: center;
+    }
+
+    /* =========================
+       PLAYER
+    ========================= */
+
+    .player {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 92px;
+      background: rgba(15,15,15,.97);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid #292929;
+      z-index: 200;
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      align-items: center;
+      gap: 20px;
+      padding: 12px 22px;
+    }
+
+    .now-playing {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .now-cover {
+      width: 58px;
+      height: 58px;
+      border-radius: 10px;
+      background: #222;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .now-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .now-info {
+      min-width: 0;
+    }
+
+    .now-title {
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .now-artist {
+      color: #777;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .control-buttons {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .control-buttons button {
+      border: 0;
+      background: none;
+      color: #fff;
+      font-size: 20px;
+    }
+
+    .control-buttons .main-play {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #fff;
+      color: #000;
+      font-size: 17px;
+    }
+
+    .timeline {
+      width: min(600px, 100%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: #777;
+    }
+
+    .timeline input {
+      flex: 1;
+    }
+
+    .volume {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .volume input {
+      width: 100px;
+    }
+
+    input[type="range"] {
+      accent-color: #1ed760;
+    }
+
+    /* =========================
+       TOAST
+    ========================= */
+
+    #toastBox {
+      position: fixed;
+      right: 20px;
+      bottom: 115px;
+      z-index: 500;
+    }
+
+    .toast {
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+      padding: 13px 18px;
+      border-radius: 12px;
+      margin-top: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.4);
+      animation: toastIn .2s ease;
+    }
+
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* =========================
+       MOBILE
+    ========================= */
+
+    @media(max-width: 800px) {
+      header {
+        padding: 0 14px;
+      }
+
+      .user-name {
+        display: none;
+      }
+
+      main {
+        width: 92%;
+      }
+
+      .player {
+        height: auto;
+        min-height: 120px;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 10px 14px;
+      }
+
+      .now-playing {
+        display: none;
+      }
+
+      .volume {
+        display: none;
+      }
+
+      .controls {
+        width: 100%;
+      }
+
+      .timeline {
+        width: 100%;
+      }
+
+      .track-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<!-- ============================== AUTH GATE ============================== -->
-<div id="authGate" class="auth-gate">
-  <div class="brand-mark">R</div>
-  <h1>Welcome to RRJIFY</h1>
-  <p>Sign in to sync your playlists, liked tracks and listening history across every device.</p>
-  <button id="googleSignInBtn" class="google-btn">
-    <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.7 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.3-1.9 14-5.1l-6.5-5.4C29.4 35.5 26.9 36.4 24 36.4c-5.3 0-9.7-3.4-11.3-8.1l-6.6 5.1C9.6 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.2 5.5l6.5 5.4C41.4 35.6 44 30.2 44 24c0-1.2-.1-2.4-.4-3.5z"/></svg>
-    Continue with Google
-  </button>
-</div>
+  <!-- =========================
+       HEADER
+  ========================= -->
 
-<!-- ================================= APP ================================= -->
-<div class="app auth-hidden" id="appRoot">
+  <header>
 
-  <!-- ---------- Sidebar ---------- -->
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark">R</div>
-      <div class="brand-word">RRJIFY</div>
+    <div class="logo">
+      RRJ<span>IFY</span>
     </div>
 
-    <nav class="nav-group">
-      <a class="nav-item active" data-view="home">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
-        Home
-      </a>
-      <a class="nav-item" data-view="community">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
-        Community
-      </a>
-      <a class="nav-item" data-view="library">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3v18l8-5 8 5V3z"/></svg>
-        Your Library
-      </a>
-      <a class="nav-item" id="openDjNav">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 015 5v4a5 5 0 01-10 0V7a5 5 0 015-5z"/><path d="M19 11a7 7 0 01-14 0M12 18v4"/></svg>
-        AGI DJ
-      </a>
-    </nav>
-
-    <div class="sidebar-divider"></div>
-
-    <div class="nav-group">
-      <div class="nav-label">Playlists</div>
-      <div class="playlist-list" id="playlistList">
-        <!-- populated from Firestore: users/{uid}/playlists -->
-      </div>
-    </div>
-
-    <div class="upload-tile" id="uploadTile">
-      Drop .mp3 / .wav / .flac here
-      <button id="browseFilesBtn">or browse files</button>
-      <input type="file" id="fileInput" accept=".mp3,.wav,.flac,audio/*" multiple hidden />
-    </div>
-  </aside>
-
-  <!-- ---------- Header ---------- -->
-  <header class="header">
-    <div class="search-wrap">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input id="searchInput" type="text" placeholder="Search songs, artists, moods…" />
-    </div>
     <div class="header-right">
-      <button class="dj-toggle" id="djToggleBtn">
-        <span class="pulse"></span>
-        Ask the AGI DJ
+
+      <span id="userName" class="user-name">
+        Not signed in
+      </span>
+
+      <button
+        id="loginBtn"
+        class="google-btn"
+      >
+        Sign in with Google
       </button>
-      <button class="profile-btn" id="profileBtn">
-        <span class="avatar" id="headerAvatar">·</span>
-        <span id="headerName">Account</span>
+
+      <button
+        id="logoutBtn"
+        class="logout-btn hidden"
+      >
+        Logout
       </button>
+
     </div>
+
   </header>
 
-  <!-- ---------- Main feed ---------- -->
-  <main class="main" id="mainFeed">
 
-    <section class="section">
-      <div class="section-head">
-        <div>
-          <div class="section-title">Your Library</div>
-          <div class="section-sub">Private to you — synced to your Google account</div>
-        </div>
-        <a class="section-link" data-view="library">Open library</a>
-      </div>
-      <div class="card-row" id="libraryRow">
-        <!-- track-card elements injected here from Firestore users/{uid}/tracks -->
-      </div>
-      <div class="empty-state auth-hidden" id="libraryEmpty">
-        <strong>Nothing uploaded yet</strong>
-        Drag an audio file into the sidebar and RRJIFY's AI tagger will fill in the title, artist, genre, BPM and cover art for you.
-      </div>
+  <!-- =========================
+       MAIN
+  ========================= -->
+
+  <main>
+
+    <section class="hero">
+
+      <h1>
+        Music, powered by
+        <span>AGI.</span>
+      </h1>
+
+      <p>
+        Upload your music, build your personal library,
+        and play your songs directly from Firebase Storage.
+      </p>
+
     </section>
 
-    <section class="section">
-      <div class="section-head">
-        <div>
-          <div class="section-title">Community</div>
-          <div class="section-sub">Tracks other users have published publicly</div>
-        </div>
-        <a class="section-link" data-view="community">See all</a>
-      </div>
-      <div class="card-row" id="communityRow"></div>
-    </section>
+
+    <!-- =========================
+         UPLOAD
+    ========================= -->
 
     <section class="section">
-      <div class="section-head">
-        <div>
-          <div class="section-title">Made by your AGI DJ</div>
-          <div class="section-sub">Prompt-generated queues from your recent asks</div>
-        </div>
+
+      <div class="section-header">
+        <h2>Upload Music</h2>
+        <span>MP3 / WAV / FLAC • Max 120 MB</span>
       </div>
-      <div class="card-row" id="djGeneratedRow">
-        <div class="empty-state">
-          <strong>No AI playlists yet</strong>
-          Try "Ask the AGI DJ" up top and describe a mood, activity or vibe.
+
+      <div class="upload-box">
+
+        <h3>
+          Add a song to your library
+        </h3>
+
+        <input
+          id="audioFile"
+          class="file-input"
+          type="file"
+          accept=".mp3,.wav,.flac,audio/mpeg,audio/wav,audio/flac"
+        >
+
+        <button
+          id="uploadBtn"
+          class="upload-btn"
+          disabled
+        >
+          Upload Song
+        </button>
+
+        <div class="progress-wrap">
+
+          <div class="progress-bar">
+            <div
+              id="progressBar"
+              class="progress"
+            ></div>
+          </div>
+
+          <div
+            id="progressText"
+            class="progress-text"
+          >
+            Select a file to upload.
+          </div>
+
         </div>
+
       </div>
+
+    </section>
+
+
+    <!-- =========================
+         MY LIBRARY
+    ========================= -->
+
+    <section class="section">
+
+      <div class="section-header">
+
+        <h2>
+          My Library
+        </h2>
+
+        <span>
+          Your uploaded songs
+        </span>
+
+      </div>
+
+      <div
+        id="libraryRow"
+        class="track-grid"
+      ></div>
+
+      <div
+        id="libraryEmpty"
+        class="empty"
+      >
+        Sign in and upload a song to see your library.
+      </div>
+
+    </section>
+
+
+    <!-- =========================
+         COMMUNITY
+    ========================= -->
+
+    <section class="section">
+
+      <div class="section-header">
+
+        <h2>
+          Community
+        </h2>
+
+        <span>
+          Public music
+        </span>
+
+      </div>
+
+      <div
+        id="communityRow"
+        class="track-grid"
+      ></div>
+
+      <div
+        id="communityEmpty"
+        class="empty"
+      >
+        No public songs available.
+      </div>
+
     </section>
 
   </main>
 
-  <!-- ---------- Bottom player ---------- -->
-  <footer class="player">
+
+  <!-- =========================
+       PLAYER
+  ========================= -->
+
+  <div class="player">
+
     <div class="now-playing">
-      <div class="np-art" id="npArt">♪</div>
-      <div class="np-text">
-        <div class="np-title" id="npTitle">Nothing playing</div>
-        <div class="np-artist" id="npArtist">Pick a track to start</div>
-      </div>
-      <button class="np-like" id="npLikeBtn" title="Save to Liked Songs">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/></svg>
-      </button>
-    </div>
 
-    <div class="transport">
-      <div class="transport-controls">
-        <button id="shuffleBtn" title="Shuffle">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
-        </button>
-        <button id="prevBtn" title="Previous">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM10 12l9-6v12z"/></svg>
-        </button>
-        <button class="play-pause" id="playPauseBtn" title="Play/Pause">
-          <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-        </button>
-        <button id="nextBtn" title="Next">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM5 6l9 6-9 6z"/></svg>
-        </button>
-        <button id="repeatBtn" title="Repeat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>
-        </button>
-      </div>
-      <div class="seek-row">
-        <span class="time" id="curTime">0:00</span>
-        <input type="range" class="seek-bar" id="seekBar" min="0" max="100" value="0" />
-        <span class="time" id="durTime">0:00</span>
-      </div>
-    </div>
+      <div class="now-cover">
 
-    <div class="player-extra">
-      <button id="queueBtn" title="Queue">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h13M3 12h13M3 18h7M17 10v8m0 0l-3-3m3 3l3-3"/></svg>
-      </button>
-      <div class="volume-row">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19 8a5 5 0 010 8"/></svg>
-        <input type="range" class="volume-bar" id="volumeBar" min="0" max="100" value="80" />
-      </div>
-    </div>
-  </footer>
+        <img
+          id="nowCover"
+          src=""
+          alt=""
+          style="display:none;"
+        >
 
-  <!-- ---------- AGI DJ side panel ---------- -->
-  <aside class="dj-panel" id="djPanel">
-    <div class="dj-head">
-      <div class="dj-head-title">
-        <div class="dj-avatar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a5 5 0 015 5v4a5 5 0 01-10 0V7a5 5 0 015-5z"/><path d="M19 11a7 7 0 01-14 0M12 18v4"/></svg>
+      </div>
+
+      <div class="now-info">
+
+        <div
+          id="nowTitle"
+          class="now-title"
+        >
+          Nothing playing
         </div>
-        <div>
-          <strong>RRJIFY AGI DJ</strong>
-          <span>Describe a vibe, get a queue</span>
+
+        <div
+          id="nowArtist"
+          class="now-artist"
+        >
+          RRJIFY
         </div>
+
       </div>
-      <button class="dj-close" id="djCloseBtn">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+
     </div>
 
-    <div class="dj-body" id="djBody">
-      <div class="dj-msg assistant">
-        Hey — tell me what you're in the mood for. Try something like:
-        <div class="dj-chip-row">
-          <button class="dj-chip" data-prompt="High-energy anime workout tracks">High-energy anime workout</button>
-          <button class="dj-chip" data-prompt="Calm Hindi acoustic songs for late-night studying">Calm Hindi acoustic, late night</button>
-          <button class="dj-chip" data-prompt="Upbeat 2010s pop for a road trip">Road trip pop</button>
-        </div>
+
+    <div class="controls">
+
+      <div class="control-buttons">
+
+        <button id="prevBtn">
+          ⏮
+        </button>
+
+        <button
+          id="playBtn"
+          class="main-play"
+        >
+          ▶
+        </button>
+
+        <button id="nextBtn">
+          ⏭
+        </button>
+
       </div>
+
+      <div class="timeline">
+
+        <span id="currentTime">
+          0:00
+        </span>
+
+        <input
+          id="seekBar"
+          type="range"
+          min="0"
+          max="100"
+          value="0"
+        >
+
+        <span id="duration">
+          0:00
+        </span>
+
+      </div>
+
     </div>
 
-    <div class="dj-input-row">
-      <input id="djInput" type="text" placeholder="e.g. moody lo-fi for rainy coding sessions" />
-      <button class="dj-send" id="djSendBtn">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-      </button>
+
+    <div class="volume">
+
+      <span>
+        🔊
+      </span>
+
+      <input
+        id="volumeBar"
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value="0.8"
+      >
+
     </div>
-  </aside>
 
-</div>
-
-<div class="toast-stack" id="toastStack"></div>
-
-<!-- ID3 tag reader for automatic metadata extraction on upload -->
-<script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js"></script>
-
-<script type="module">
-/* ============================================================================
-   FIREBASE INITIALIZATION
-   Replace FIREBASE_CONFIG with the values from Firebase Console →
-   Project Settings → General → Your apps → SDK setup and configuration.
-   ============================================================================ */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, query, where, orderBy, limit, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import {
-  getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+  </div>
 
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCZIvCN5USlFbTzXXLIu7797KbEGpQuVTg",
-  authDomain: "music-player-e9930.firebaseapp.com",
-  projectId: "music-player-e9930",
-  storageBucket: "music-player-e9930.firebasestorage.app",
-  messagingSenderId: "1017097614834",
-  appId: "1:1017097614834:web:9fbb71d9a3d1049a95276b",
-  measurementId: "G-FEM226W8FL"
-};
+  <!-- =========================
+       TOAST
+  ========================= -->
 
-// Server-side proxy endpoints (see "SERVER-SIDE PIECES" comment near the
-// bottom of this file for the Cloud Function implementations). Never call
-// an LLM API directly from the browser with a bearer key embedded here.
-const AGI_DJ_ENDPOINT   = "/api/agi-dj";          // POST { prompt, libraryTrackIds }
-const DEEP_TAG_ENDPOINT = "/api/analyze-audio";   // POST { storagePath } -> { bpm, genre, mood }
+  <div id="toastBox"></div>
 
-const fbApp = initializeApp(firebaseConfig);
-const auth      = getAuth(fbApp);
-const db        = getFirestore(fbApp);
-const storage   = getStorage(fbApp);
-const provider  = new GoogleAuthProvider();
 
-let currentUser = null;
+  <!-- =========================
+       FIREBASE + APP
+  ========================= -->
 
-/* ============================================================================
-   AUTH — Google Sign-In + per-user auto-sync bootstrap
-   ============================================================================ */
-document.getElementById("googleSignInBtn").addEventListener("click", async () => {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (err) {
-    toast("Sign-in failed — check the console for details.");
-    console.error(err);
-  }
-});
+  <script type="module">
 
-document.getElementById("profileBtn").addEventListener("click", async () => {
-  if (confirm("Sign out of RRJIFY?")) await signOut(auth);
-});
+    /* =====================================================
+       FIREBASE IMPORTS
+    ===================================================== */
 
-onAuthStateChanged(auth, (user) => {
-  currentUser = user;
-  const gate = document.getElementById("authGate");
-  const app  = document.getElementById("appRoot");
+    import {
+      initializeApp
+    } from
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 
-  if (user) {
-    gate.classList.add("auth-hidden");
-    app.classList.remove("auth-hidden");
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      onAuthStateChanged,
+      signOut
+    } from
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-    document.getElementById("headerName").textContent = user.displayName?.split(" ")[0] || "Account";
-    const avatarEl = document.getElementById("headerAvatar");
-    if (user.photoURL) {
-      avatarEl.innerHTML = `<img src="${user.photoURL}" alt="">`;
-    } else {
-      avatarEl.textContent = (user.displayName || "U")[0].toUpperCase();
-    }
+    import {
+      getFirestore,
+      collection,
+      doc,
+      addDoc,
+      setDoc,
+      updateDoc,
+      onSnapshot,
+      query,
+      orderBy,
+      where,
+      limit,
+      serverTimestamp
+    } from
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-    // Ensure a user profile doc exists (auto-sync target for
-    // playlists / liked tracks / theme / history described in the brief).
-    setDoc(doc(db, "users", user.uid), {
-      displayName: user.displayName,
-      email: user.email,
-      photoURL: user.photoURL,
-      lastSeen: serverTimestamp()
-    }, { merge: true });
+    import {
+      getStorage,
+      ref as storageRef,
+      uploadBytesResumable,
+      getDownloadURL
+    } from
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-    subscribeToLibrary(user.uid);
-    subscribeToCommunity();
-    subscribeToPlaylists(user.uid);
-  } else {
-    gate.classList.remove("auth-hidden");
-    app.classList.add("auth-hidden");
-  }
-});
 
-/* ============================================================================
-   REAL-TIME LIBRARY SYNC (Firestore onSnapshot)
-   users/{uid}/tracks  — this user's private uploads (+ liked tracks)
-   tracks (public)     — root collection, only tracks explicitly published
-   users/{uid}/playlists — auto-synced playlists
-   ============================================================================ */
-function subscribeToLibrary(uid) {
-  const q = query(collection(db, "users", uid, "tracks"), orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    const row = document.getElementById("libraryRow");
-    const empty = document.getElementById("libraryEmpty");
-    row.innerHTML = "";
-    if (snap.empty) { empty.classList.remove("auth-hidden"); return; }
-    empty.classList.add("auth-hidden");
-    snap.forEach(d => row.appendChild(renderTrackCard({ id: d.id, ...d.data() }, { owned: true })));
-  });
-}
+    /* =====================================================
+       FIREBASE CONFIG
+    ===================================================== */
 
-function subscribeToCommunity() {
-  // Root "tracks" collection only ever receives a document once a user has
-  // explicitly hit "Publish to public profile" on their own track (see
-  // publishTrack() below) — nothing lands here automatically on upload.
-  const q = query(collection(db, "tracks"), where("public", "==", true), orderBy("createdAt", "desc"), limit(24));
-  onSnapshot(q, (snap) => {
-    const row = document.getElementById("communityRow");
-    row.innerHTML = "";
-    snap.forEach(d => row.appendChild(renderTrackCard({ id: d.id, ...d.data() }, { owned: false })));
-  });
-}
+    const firebaseConfig = {
 
-function subscribeToPlaylists(uid) {
-  const q = query(collection(db, "users", uid, "playlists"), orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    const list = document.getElementById("playlistList");
-    list.innerHTML = "";
-    snap.forEach(d => {
-      const el = document.createElement("div");
-      el.className = "playlist-item";
-      el.textContent = d.data().name || "Untitled playlist";
-      list.appendChild(el);
-    });
-  });
-}
+      apiKey:
+        "AIzaSyCZIvCN5US5FbTzXXLIu7797KbEGpQuVTg",
 
-/* ============================================================================
-   TRACK CARD RENDERING
-   ============================================================================ */
-function renderTrackCard(track, { owned }) {
-  const card = document.createElement("div");
-  card.className = "track-card";
-  card.dataset.trackId = track.id;
+      authDomain:
+        "music-player-e9930.firebaseapp.com",
 
-  const artInner = track.albumArtUrl
-    ? `<img src="${track.albumArtUrl}" alt="">`
-    : (track.title || "?")[0].toUpperCase();
+      projectId:
+        "music-player-e9930",
 
-  card.innerHTML = `
-    <div class="art-wrap">
-      <div class="art">${artInner}</div>
-      <button class="play-fab" title="Play">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-    </div>
-    <div class="track-title">${escapeHtml(track.title || "Untitled")}</div>
-    <div class="track-meta">${escapeHtml(track.artist || "Unknown artist")}</div>
-    <div class="track-badges">
-      ${track.genre ? `<span class="badge">${escapeHtml(track.genre)}</span>` : ""}
-      ${track.bpm ? `<span class="badge bpm">${Math.round(track.bpm)} BPM</span>` : ""}
-      ${owned && !track.public ? `<span class="badge" title="Only visible to you">Private</span>` : ""}
-    </div>
-  `;
+      storageBucket:
+        "music-player-e9930.firebasestorage.app",
 
-  card.querySelector(".play-fab").addEventListener("click", (e) => {
-    e.stopPropagation();
-    playTrack(track);
-  });
-  card.addEventListener("click", () => playTrack(track));
+      messagingSenderId:
+        "1017097614834",
 
-  // Right-click / long-press affordance to publish an owned track publicly —
-  // intentionally a deliberate, per-track action rather than automatic.
-  if (owned) {
-    card.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      if (confirm(`Publish "${track.title}" to your public profile so other RRJIFY users can find it? Only do this for music you own or are licensed to share.`)) {
-        publishTrack(track.id);
+      appId:
+        "1:1017097614834:web:9fbb71d9a3d1049a95276b",
+
+      measurementId:
+        "G-FEM226W8FL"
+
+    };
+
+
+    /* =====================================================
+       INITIALIZE FIREBASE
+    ===================================================== */
+
+    const app =
+      initializeApp(firebaseConfig);
+
+    const auth =
+      getAuth(app);
+
+    const db =
+      getFirestore(app);
+
+    const storage =
+      getStorage(app);
+
+    const googleProvider =
+      new GoogleAuthProvider();
+
+
+    /* =====================================================
+       DOM
+    ===================================================== */
+
+    const loginBtn =
+      document.getElementById("loginBtn");
+
+    const logoutBtn =
+      document.getElementById("logoutBtn");
+
+    const userName =
+      document.getElementById("userName");
+
+    const audioFile =
+      document.getElementById("audioFile");
+
+    const uploadBtn =
+      document.getElementById("uploadBtn");
+
+    const progressBar =
+      document.getElementById("progressBar");
+
+    const progressText =
+      document.getElementById("progressText");
+
+    const libraryRow =
+      document.getElementById("libraryRow");
+
+    const libraryEmpty =
+      document.getElementById("libraryEmpty");
+
+    const communityRow =
+      document.getElementById("communityRow");
+
+    const communityEmpty =
+      document.getElementById("communityEmpty");
+
+    const playBtn =
+      document.getElementById("playBtn");
+
+    const prevBtn =
+      document.getElementById("prevBtn");
+
+    const nextBtn =
+      document.getElementById("nextBtn");
+
+    const seekBar =
+      document.getElementById("seekBar");
+
+    const currentTime =
+      document.getElementById("currentTime");
+
+    const durationEl =
+      document.getElementById("duration");
+
+    const volumeBar =
+      document.getElementById("volumeBar");
+
+    const nowTitle =
+      document.getElementById("nowTitle");
+
+    const nowArtist =
+      document.getElementById("nowArtist");
+
+    const nowCover =
+      document.getElementById("nowCover");
+
+
+    /* =====================================================
+       GLOBAL STATE
+    ===================================================== */
+
+    let currentUser = null;
+
+    let currentTrack = null;
+
+    let queue = [];
+
+    let queueIndex = -1;
+
+    const trackIndex =
+      new Map();
+
+
+    /* =====================================================
+       AUDIO ENGINE
+    ===================================================== */
+
+    const audioEl =
+      new Audio();
+
+    audioEl.volume = 0.8;
+
+    audioEl.preload = "metadata";
+
+
+    /* =====================================================
+       AUDIO DEBUGGING
+    ===================================================== */
+
+    audioEl.addEventListener(
+      "loadstart",
+      () => {
+        console.log(
+          "🔵 AUDIO LOAD START"
+        );
       }
-    });
-  }
+    );
 
-  return card;
-}
 
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-}
+    audioEl.addEventListener(
+      "loadedmetadata",
+      () => {
 
-async function publishTrack(trackId) {
-  if (!currentUser) return;
-  const trackRef = doc(db, "users", currentUser.uid, "tracks", trackId);
-  await updateDoc(trackRef, { public: true });
-  // A Cloud Function trigger (onUpdate of users/{uid}/tracks/{id}) mirrors
-  // the doc into the root `tracks` collection when `public == true`, so the
-  // publish path is server-verified rather than trusted purely client-side.
-  toast("Published to your public profile.");
-}
+        console.log(
+          "✅ AUDIO METADATA LOADED"
+        );
 
-/* ============================================================================
-   UPLOAD PIPELINE
-   1. Drag/drop or file picker → validate type/size
-   2. Client-side pass: HTMLAudio duration + jsmediatags ID3 read (title,
-      artist, album art) fills the form instantly.
-   3. Upload bytes to Storage at users/{uid}/tracks/{trackId}.{ext}
-   4. Write a Firestore doc immediately (status: "processing")
-   5. Call DEEP_TAG_ENDPOINT (server-side) for BPM/genre/mood analysis that's
-      too heavy to run reliably in-browser; patch the doc when it resolves.
-   ============================================================================ */
-const uploadTile = document.getElementById("uploadTile");
-const fileInput  = document.getElementById("fileInput");
+        console.log(
+          "Duration:",
+          audioEl.duration
+        );
 
-["dragenter","dragover"].forEach(evt =>
-  uploadTile.addEventListener(evt, (e) => { e.preventDefault(); uploadTile.classList.add("drag-over"); })
-);
-["dragleave","drop"].forEach(evt =>
-  uploadTile.addEventListener(evt, (e) => { e.preventDefault(); uploadTile.classList.remove("drag-over"); })
-);
-uploadTile.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
-document.getElementById("browseFilesBtn").addEventListener("click", () => fileInput.click());
-fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
+        durationEl.textContent =
+          formatTime(audioEl.duration);
 
-const ACCEPTED_EXT = ["mp3", "wav", "flac"];
-const MAX_BYTES = 120 * 1024 * 1024; // 120MB safety cap
+        seekBar.max =
+          Number.isFinite(audioEl.duration)
+            ? audioEl.duration
+            : 0;
 
-async function handleFiles(fileList) {
-  if (!currentUser) { toast("Sign in to upload."); return; }
-  for (const file of Array.from(fileList)) {
-    const ext = file.name.split(".").pop().toLowerCase();
-    if (!ACCEPTED_EXT.includes(ext)) { toast(`Skipped "${file.name}" — unsupported format.`); continue; }
-    if (file.size > MAX_BYTES) { toast(`Skipped "${file.name}" — over 120MB.`); continue; }
-    ingestFile(file, ext).catch(err => { console.error(err); toast(`Upload failed: ${file.name}`); });
-  }
-}
-
-async function ingestFile(file, ext) {
-  toast(`Analyzing "${file.name}"…`);
-
-  const quickMeta = await extractQuickMetadata(file); // { title, artist, albumArtDataUrl, durationSec }
-
-  // 1) Firestore placeholder doc so the UI can show the track immediately
-  const trackDocRef = await addDoc(collection(db, "users", currentUser.uid, "tracks"), {
-    title: quickMeta.title || file.name.replace(/\.[^.]+$/, ""),
-    artist: quickMeta.artist || "Unknown artist",
-    durationSec: quickMeta.durationSec || null,
-    genre: null,
-    bpm: null,
-    albumArtUrl: null,
-    public: false,          // private by default — see publishTrack()
-    status: "processing",
-    createdAt: serverTimestamp()
-  });
-
-  // 2) Upload bytes to Storage under this user's private prefix
-  const path = `users/${currentUser.uid}/tracks/${trackDocRef.id}.${ext}`;
-  const sRef = storageRef(storage, path);
-  const uploadTask = uploadBytesResumable(sRef, file, { contentType: file.type || `audio/${ext}` });
-
-  uploadTask.on("state_changed",
-    (snap) => { /* wire up a progress bar here if desired */ },
-    (err) => { console.error(err); toast(`Upload error: ${file.name}`); },
-    async () => {
-      const audioUrl = await getDownloadURL(uploadTask.snapshot.ref);
-      let albumArtUrl = null;
-
-      if (quickMeta.albumArtDataUrl) {
-        const artRef = storageRef(storage, `users/${currentUser.uid}/tracks/${trackDocRef.id}_art.jpg`);
-        await uploadBytesResumable(artRef, dataURLToBlob(quickMeta.albumArtDataUrl), { contentType: "image/jpeg" });
-        albumArtUrl = await getDownloadURL(artRef);
       }
+    );
 
-      await updateDoc(trackDocRef, {
-        audioUrl, albumArtUrl, storagePath: path, status: "ready"
-      });
 
-      // 3) Server-side deep analysis (BPM, genre, mood) — see stub below.
-      try {
-        const res = await fetch(DEEP_TAG_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ storagePath: path, trackId: trackDocRef.id, uid: currentUser.uid })
-        });
-        if (res.ok) {
-          const { bpm, genre, mood } = await res.json();
-          await updateDoc(trackDocRef, { bpm, genre, mood });
+    audioEl.addEventListener(
+      "loadeddata",
+      () => {
+        console.log(
+          "✅ AUDIO DATA LOADED"
+        );
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "canplay",
+      () => {
+        console.log(
+          "✅ AUDIO CAN PLAY"
+        );
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "playing",
+      () => {
+
+        console.log(
+          "▶ AUDIO PLAYING"
+        );
+
+        playBtn.textContent =
+          "⏸";
+
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "pause",
+      () => {
+
+        playBtn.textContent =
+          "▶";
+
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "ended",
+      () => {
+
+        console.log(
+          "⏭ SONG ENDED"
+        );
+
+        playNext();
+
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "timeupdate",
+      () => {
+
+        currentTime.textContent =
+          formatTime(audioEl.currentTime);
+
+        if (
+          Number.isFinite(audioEl.duration) &&
+          audioEl.duration > 0
+        ) {
+
+          seekBar.value =
+            audioEl.currentTime;
+
         }
-      } catch (e) {
-        console.warn("Deep-tag analysis unavailable — leaving BPM/genre blank.", e);
+
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "error",
+      () => {
+
+        console.error(
+          "🔥 AUDIO ELEMENT ERROR:",
+          audioEl.error
+        );
+
+        console.error(
+          "Current URL:",
+          audioEl.src
+        );
+
+        if (audioEl.error) {
+
+          console.error(
+            "Error code:",
+            audioEl.error.code
+          );
+
+          console.error(
+            "Error message:",
+            audioEl.error.message
+          );
+
+        }
+
+        toast(
+          "Audio failed to load. Check Console."
+        );
+
+      }
+    );
+
+
+    audioEl.addEventListener(
+      "stalled",
+      () => {
+
+        console.warn(
+          "⚠ Audio stalled"
+        );
+
+      }
+    );
+
+
+    /* =====================================================
+       HELPERS
+    ===================================================== */
+
+    function toast(message) {
+
+      const box =
+        document.getElementById("toastBox");
+
+      const item =
+        document.createElement("div");
+
+      item.className =
+        "toast";
+
+      item.textContent =
+        message;
+
+      box.appendChild(item);
+
+      setTimeout(
+        () => item.remove(),
+        3500
+      );
+
+    }
+
+
+    function formatTime(seconds) {
+
+      if (
+        !Number.isFinite(seconds) ||
+        seconds < 0
+      ) {
+        return "0:00";
       }
 
-      toast(`"${quickMeta.title || file.name}" added to your library.`);
+      const mins =
+        Math.floor(seconds / 60);
+
+      const secs =
+        Math.floor(seconds % 60)
+          .toString()
+          .padStart(2, "0");
+
+      return `${mins}:${secs}`;
+
     }
-  );
-}
 
-// Client-side quick pass: ID3 tags (title/artist/art) + Web Audio duration.
-function extractQuickMetadata(file) {
-  return new Promise((resolve) => {
-    const result = { title: null, artist: null, albumArtDataUrl: null, durationSec: null };
 
-    // Duration via a throwaway <audio> element
-    const objectUrl = URL.createObjectURL(file);
-    const probe = new Audio();
-    probe.preload = "metadata";
-    probe.src = objectUrl;
-    probe.addEventListener("loadedmetadata", () => {
-      result.durationSec = probe.duration;
-      URL.revokeObjectURL(objectUrl);
-    });
+    function escapeHTML(value) {
 
-    if (window.jsmediatags) {
-      window.jsmediatags.read(file, {
-        onSuccess: (tag) => {
-          const t = tag.tags;
-          result.title = t.title || null;
-          result.artist = t.artist || null;
-          if (t.picture) {
-            const { data, format } = t.picture;
-            const base64 = arrayBufferToBase64(new Uint8Array(data));
-            result.albumArtDataUrl = `data:${format};base64,${base64}`;
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    }
+
+
+    /* =====================================================
+       GOOGLE LOGIN
+    ===================================================== */
+
+    loginBtn.addEventListener(
+      "click",
+      async () => {
+
+        try {
+
+          loginBtn.disabled =
+            true;
+
+          await signInWithPopup(
+            auth,
+            googleProvider
+          );
+
+        } catch (error) {
+
+          console.error(
+            "LOGIN ERROR:",
+            error
+          );
+
+          toast(
+            error.message ||
+            "Login failed."
+          );
+
+        } finally {
+
+          loginBtn.disabled =
+            false;
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       LOGOUT
+    ===================================================== */
+
+    logoutBtn.addEventListener(
+      "click",
+      async () => {
+
+        try {
+
+          await signOut(auth);
+
+        } catch (error) {
+
+          console.error(
+            error
+          );
+
+          toast(
+            "Logout failed."
+          );
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       AUTH STATE
+    ===================================================== */
+
+    onAuthStateChanged(
+      auth,
+      user => {
+
+        currentUser =
+          user;
+
+        if (user) {
+
+          userName.textContent =
+            user.displayName ||
+            user.email ||
+            "User";
+
+          loginBtn.classList
+            .add("hidden");
+
+          logoutBtn.classList
+            .remove("hidden");
+
+          libraryEmpty.textContent =
+            "No songs uploaded yet.";
+
+          subscribeToLibrary(
+            user.uid
+          );
+
+        } else {
+
+          userName.textContent =
+            "Not signed in";
+
+          loginBtn.classList
+            .remove("hidden");
+
+          logoutBtn.classList
+            .add("hidden");
+
+          libraryRow.innerHTML = "";
+
+          libraryEmpty.textContent =
+            "Sign in and upload a song to see your library.";
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       FILE SELECTION
+    ===================================================== */
+
+    audioFile.addEventListener(
+      "change",
+      () => {
+
+        const file =
+          audioFile.files[0];
+
+        if (!file) {
+
+          uploadBtn.disabled =
+            true;
+
+          progressText.textContent =
+            "Select a file to upload.";
+
+          return;
+
+        }
+
+
+        const allowedTypes = [
+          "audio/mpeg",
+          "audio/mp3",
+          "audio/wav",
+          "audio/x-wav",
+          "audio/flac",
+          "audio/x-flac"
+        ];
+
+
+        const extension =
+          file.name
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+
+        const allowedExtensions = [
+          "mp3",
+          "wav",
+          "flac"
+        ];
+
+
+        if (
+          !allowedExtensions
+            .includes(extension)
+        ) {
+
+          toast(
+            "Only MP3, WAV and FLAC files are allowed."
+          );
+
+          audioFile.value = "";
+
+          uploadBtn.disabled =
+            true;
+
+          return;
+
+        }
+
+
+        const maxSize =
+          120 * 1024 * 1024;
+
+
+        if (file.size > maxSize) {
+
+          toast(
+            "File is larger than 120 MB."
+          );
+
+          audioFile.value = "";
+
+          uploadBtn.disabled =
+            true;
+
+          return;
+
+        }
+
+
+        uploadBtn.disabled =
+          !currentUser;
+
+        progressText.textContent =
+          `${file.name} selected — ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+
+      }
+    );
+
+
+    /* =====================================================
+       UPLOAD SONG
+    ===================================================== */
+
+    uploadBtn.addEventListener(
+      "click",
+      uploadSong
+    );
+
+
+    async function uploadSong() {
+
+      if (!currentUser) {
+
+        toast(
+          "Please sign in first."
+        );
+
+        return;
+
+      }
+
+
+      const file =
+        audioFile.files[0];
+
+
+      if (!file) {
+
+        toast(
+          "Select a song first."
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        uploadBtn.disabled =
+          true;
+
+        progressBar.style.width =
+          "0%";
+
+        progressText.textContent =
+          "Creating song record...";
+
+
+        /* -----------------------------------------
+           CREATE FIRESTORE DOCUMENT
+        ----------------------------------------- */
+
+        const trackRef =
+          doc(
+            collection(
+              db,
+              "users",
+              currentUser.uid,
+              "tracks"
+            )
+          );
+
+
+        const trackId =
+          trackRef.id;
+
+
+        const extension =
+          file.name
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+
+        const title =
+          file.name
+            .replace(
+              /\.[^/.]+$/,
+              ""
+            );
+
+
+        await setDoc(
+          trackRef,
+          {
+
+            title:
+              title,
+
+            artist:
+              currentUser.displayName ||
+              currentUser.email ||
+              "Unknown Artist",
+
+            album:
+              "RRJIFY Uploads",
+
+            fileName:
+              file.name,
+
+            fileSize:
+              file.size,
+
+            mimeType:
+              file.type ||
+              "audio/mpeg",
+
+            extension:
+              extension,
+
+            status:
+              "processing",
+
+            public:
+              false,
+
+            ownerId:
+              currentUser.uid,
+
+            createdAt:
+              serverTimestamp(),
+
+            audioUrl:
+              "",
+
+            storagePath:
+              ""
+
           }
-          setTimeout(() => resolve(result), 150); // give duration probe a beat to finish
+        );
+
+
+        /* -----------------------------------------
+           STORAGE REFERENCE
+        ----------------------------------------- */
+
+        const path =
+          `users/${currentUser.uid}/tracks/${trackId}.${extension}`;
+
+
+        const fileRef =
+          storageRef(
+            storage,
+            path
+          );
+
+
+        progressText.textContent =
+          "Uploading audio...";
+
+
+        /* -----------------------------------------
+           RESUMABLE UPLOAD
+        ----------------------------------------- */
+
+        const uploadTask =
+          uploadBytesResumable(
+            fileRef,
+            file,
+            {
+              contentType:
+                file.type ||
+                "audio/mpeg"
+            }
+          );
+
+
+        await new Promise(
+          (resolve, reject) => {
+
+            uploadTask.on(
+
+              "state_changed",
+
+              snapshot => {
+
+                const percent =
+                  (
+                    snapshot.bytesTransferred /
+                    snapshot.totalBytes
+                  ) * 100;
+
+                progressBar.style.width =
+                  `${percent}%`;
+
+                progressText.textContent =
+                  `Uploading... ${Math.round(percent)}%`;
+
+              },
+
+              error => {
+
+                console.error(
+                  "UPLOAD ERROR:",
+                  error
+                );
+
+                reject(error);
+
+              },
+
+              resolve
+
+            );
+
+          }
+        );
+
+
+        /* -----------------------------------------
+           GET DOWNLOAD URL
+        ----------------------------------------- */
+
+        progressText.textContent =
+          "Generating playback URL...";
+
+
+        const audioUrl =
+          await getDownloadURL(
+            fileRef
+          );
+
+
+        console.log(
+          "✅ AUDIO URL:",
+          audioUrl
+        );
+
+
+        /* -----------------------------------------
+           UPDATE FIRESTORE
+        ----------------------------------------- */
+
+        await updateDoc(
+          trackRef,
+          {
+
+            audioUrl:
+              audioUrl,
+
+            storagePath:
+              path,
+
+            status:
+              "ready"
+
+          }
+        );
+
+
+        /* -----------------------------------------
+           COMPLETE
+        ----------------------------------------- */
+
+        progressBar.style.width =
+          "100%";
+
+        progressText.textContent =
+          "✅ Upload complete!";
+
+
+        toast(
+          "Song uploaded successfully!"
+        );
+
+
+        audioFile.value =
+          "";
+
+        setTimeout(
+          () => {
+
+            progressBar.style.width =
+              "0%";
+
+            progressText.textContent =
+              "Select a file to upload.";
+
+          },
+          2500
+        );
+
+
+      } catch (error) {
+
+        console.error(
+          "❌ COMPLETE UPLOAD ERROR:",
+          error
+        );
+
+        progressText.textContent =
+          "Upload failed.";
+
+        toast(
+          error.message ||
+          "Upload failed."
+        );
+
+      } finally {
+
+        uploadBtn.disabled =
+          !currentUser;
+
+      }
+
+    }
+
+
+    /* =====================================================
+       LIBRARY LISTENER
+    ===================================================== */
+
+    function subscribeToLibrary(uid) {
+
+      const tracksRef =
+        collection(
+          db,
+          "users",
+          uid,
+          "tracks"
+        );
+
+
+      const q =
+        query(
+          tracksRef,
+          orderBy(
+            "createdAt",
+            "desc"
+          )
+        );
+
+
+      onSnapshot(
+
+        q,
+
+        snap => {
+
+          libraryRow.innerHTML =
+            "";
+
+          if (snap.empty) {
+
+            libraryEmpty.classList
+              .remove("hidden");
+
+            return;
+
+          }
+
+
+          libraryEmpty.classList
+            .add("hidden");
+
+
+          snap.forEach(
+            d => {
+
+              const track = {
+                id:
+                  d.id,
+                ...d.data()
+              };
+
+
+              /* IMPORTANT:
+                 AGI TRACK INDEX
+              */
+
+              trackIndex.set(
+                track.id,
+                track
+              );
+
+
+              libraryRow.appendChild(
+                renderTrackCard(
+                  track,
+                  {
+                    owned: true
+                  }
+                )
+              );
+
+            }
+          );
+
         },
-        onError: () => setTimeout(() => resolve(result), 150)
-      });
-    } else {
-      setTimeout(() => resolve(result), 150);
+
+        error => {
+
+          console.error(
+            "LIBRARY FIRESTORE ERROR:",
+            error
+          );
+
+          toast(
+            "Could not load your library."
+          );
+
+        }
+
+      );
+
     }
-  });
-}
 
-function arrayBufferToBase64(bytes) {
-  let binary = "";
-  bytes.forEach(b => binary += String.fromCharCode(b));
-  return btoa(binary);
-}
 
-function dataURLToBlob(dataUrl) {
-  const [meta, b64] = dataUrl.split(",");
-  const mime = meta.match(/:(.*?);/)[1];
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
+    /* =====================================================
+       COMMUNITY LISTENER
+    ===================================================== */
 
-/* ============================================================================
-   AUDIO PLAYER
-   ============================================================================ */
-const audioEl = new Audio();
-audioEl.volume = 0.8;
-let queue = [];
-let queueIndex = -1;
-let isShuffled = false;
-let repeatMode = "off"; // "off" | "all" | "one"
+    function subscribeToCommunity() {
 
-const els = {
-  playPauseBtn: document.getElementById("playPauseBtn"),
-  playIcon: document.getElementById("playIcon"),
-  pauseIcon: document.getElementById("pauseIcon"),
-  seekBar: document.getElementById("seekBar"),
-  curTime: document.getElementById("curTime"),
-  durTime: document.getElementById("durTime"),
-  volumeBar: document.getElementById("volumeBar"),
-  npArt: document.getElementById("npArt"),
-  npTitle: document.getElementById("npTitle"),
-  npArtist: document.getElementById("npArtist"),
-  npLikeBtn: document.getElementById("npLikeBtn"),
-  shuffleBtn: document.getElementById("shuffleBtn"),
-  repeatBtn: document.getElementById("repeatBtn"),
-};
+      const tracksRef =
+        collection(
+          db,
+          "tracks"
+        );
 
-async function playTrack(track, contextQueue = null) {
-  if (!track || !track.audioUrl) {
-    console.error("NO AUDIO URL:", track);
-    toast("Song is still processing — please wait.");
-    return;
-  }
 
-  try {
-    // Queue setup
-    if (contextQueue && contextQueue.length) {
-      queue = contextQueue;
-      queueIndex = queue.findIndex(t => t.id === track.id);
+      const q =
+        query(
+          tracksRef,
+          where(
+            "public",
+            "==",
+            true
+          ),
+          orderBy(
+            "createdAt",
+            "desc"
+          ),
+          limit(24)
+        );
 
-      if (queueIndex < 0) {
-        queueIndex = 0;
+
+      onSnapshot(
+
+        q,
+
+        snap => {
+
+          communityRow.innerHTML =
+            "";
+
+
+          if (snap.empty) {
+
+            communityEmpty.classList
+              .remove("hidden");
+
+            return;
+
+          }
+
+
+          communityEmpty.classList
+            .add("hidden");
+
+
+          snap.forEach(
+            d => {
+
+              const track = {
+                id:
+                  d.id,
+                ...d.data()
+              };
+
+
+              trackIndex.set(
+                track.id,
+                track
+              );
+
+
+              communityRow.appendChild(
+                renderTrackCard(
+                  track,
+                  {
+                    owned: false
+                  }
+                )
+              );
+
+            }
+          );
+
+        },
+
+        error => {
+
+          console.error(
+            "COMMUNITY FIRESTORE ERROR:",
+            error
+          );
+
+          console.warn(
+            "Community query may require a Firestore index."
+          );
+
+        }
+
+      );
+
+    }
+
+
+    /* =====================================================
+       TRACK CARD
+    ===================================================== */
+
+    function renderTrackCard(
+      track,
+      options = {}
+    ) {
+
+      const owned =
+        options.owned === true;
+
+
+      const card =
+        document.createElement("div");
+
+      card.className =
+        "track-card";
+
+
+      const cover =
+        track.albumArtUrl ||
+        "";
+
+
+      const safeTitle =
+        escapeHTML(
+          track.title ||
+          "Untitled"
+        );
+
+
+      const safeArtist =
+        escapeHTML(
+          track.artist ||
+          "Unknown Artist"
+        );
+
+
+      const status =
+        track.status ||
+        "ready";
+
+
+      card.innerHTML = `
+
+        <div class="cover">
+
+          ${
+            cover
+              ? `
+                <img
+                  src="${escapeHTML(cover)}"
+                  alt=""
+                  loading="lazy"
+                >
+              `
+              : ""
+          }
+
+        </div>
+
+
+        <div class="track-title">
+          ${safeTitle}
+        </div>
+
+
+        <div class="track-artist">
+          ${safeArtist}
+        </div>
+
+
+        <div class="track-actions">
+
+          <span class="status">
+            ${
+              status === "processing"
+                ? "Processing..."
+                : "Ready"
+            }
+          </span>
+
+          <button
+            class="play-small"
+            type="button"
+          >
+            ▶
+          </button>
+
+        </div>
+
+      `;
+
+
+      const playButton =
+        card.querySelector(
+          ".play-small"
+        );
+
+
+      playButton.addEventListener(
+        "click",
+        event => {
+
+          event.stopPropagation();
+
+          playTrack(
+            track,
+            [track]
+          );
+
+        }
+      );
+
+
+      card.addEventListener(
+        "click",
+        () => {
+
+          playTrack(
+            track,
+            [track]
+          );
+
+        }
+      );
+
+
+      return card;
+
+    }
+
+
+    /* =====================================================
+       PLAY TRACK — FIXED
+    ===================================================== */
+
+    async function playTrack(
+      track,
+      contextQueue = null
+    ) {
+
+      if (!track) {
+
+        console.error(
+          "NO TRACK OBJECT:",
+          track
+        );
+
+        toast(
+          "Track not found."
+        );
+
+        return;
+
       }
-    } else {
-      queue = [track];
-      queueIndex = 0;
-    }
 
-    console.log("=================================");
-    console.log("RRJIFY PLAYBACK");
-    console.log("Title:", track.title);
-    console.log("Artist:", track.artist);
-    console.log("Audio URL:", track.audioUrl);
-    console.log("Status:", track.status);
-    console.log("=================================");
 
-    // Stop previous track
-    audioEl.pause();
-    audioEl.currentTime = 0;
+      if (!track.audioUrl) {
 
-    // Reset player
-    audioEl.src = "";
-    audioEl.load();
+        console.error(
+          "NO AUDIO URL:",
+          track
+        );
 
-    // Set new track
-    audioEl.src = track.audioUrl;
-    audioEl.load();
+        toast(
+          "Song is still processing. Please wait."
+        );
 
-    updateNowPlayingUI(track);
+        return;
 
-    // Actually start playback
-    await audioEl.play();
-
-    console.log("✅ PLAYING:", track.title);
-
-    // Save listening history
-    logListeningHistory(track);
-
-  } catch (err) {
-    console.error("❌ PLAYBACK ERROR:", err);
-
-    if (err.name === "NotSupportedError") {
-      toast("This audio format cannot be played by your browser.");
-    } 
-    else if (err.name === "NotAllowedError") {
-      toast("Browser blocked playback. Click the Play button again.");
-    } 
-    else {
-      toast("Unable to play this song. Check Console (F12).");
-    }
-  }
-}
-
-function updateNowPlayingUI(track) {
-  els.npTitle.textContent = track.title || "Untitled";
-  els.npArtist.textContent = track.artist || "Unknown artist";
-  els.npArt.innerHTML = track.albumArtUrl ? `<img src="${track.albumArtUrl}" alt="">` : "♪";
-}
-
-els.playPauseBtn.addEventListener("click", () => {
-  if (!audioEl.src) return;
-  audioEl.paused ? audioEl.play() : audioEl.pause();
-});
-audioEl.addEventListener("play",  () => { els.playIcon.style.display = "none"; els.pauseIcon.style.display = ""; });
-audioEl.addEventListener("pause", () => { els.playIcon.style.display = "";     els.pauseIcon.style.display = "none"; });
-
-audioEl.addEventListener("timeupdate", () => {
-  if (!audioEl.duration) return;
-  els.seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
-  els.curTime.textContent = formatTime(audioEl.currentTime);
-  els.durTime.textContent = formatTime(audioEl.duration);
-});
-els.seekBar.addEventListener("input", () => {
-  if (!audioEl.duration) return;
-  audioEl.currentTime = (els.seekBar.value / 100) * audioEl.duration;
-});
-els.volumeBar.addEventListener("input", () => { audioEl.volume = els.volumeBar.value / 100; });
-
-audioEl.addEventListener("ended", () => {
-  if (repeatMode === "one") { audioEl.currentTime = 0; audioEl.play(); return; }
-  goToNext();
-});
-
-document.getElementById("nextBtn").addEventListener("click", goToNext);
-document.getElementById("prevBtn").addEventListener("click", () => {
-  if (audioEl.currentTime > 4) { audioEl.currentTime = 0; return; }
-  if (queueIndex > 0) playTrack(queue[queueIndex - 1], queue);
-});
-function goToNext() {
-  if (!queue.length) return;
-  if (isShuffled) { queueIndex = Math.floor(Math.random() * queue.length); }
-  else if (queueIndex < queue.length - 1) { queueIndex++; }
-  else if (repeatMode === "all") { queueIndex = 0; }
-  else { return; }
-  playTrack(queue[queueIndex], queue);
-}
-els.shuffleBtn.addEventListener("click", () => {
-  isShuffled = !isShuffled;
-  els.shuffleBtn.classList.toggle("toggled", isShuffled);
-});
-els.repeatBtn.addEventListener("click", () => {
-  repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
-  els.repeatBtn.classList.toggle("toggled", repeatMode !== "off");
-  els.repeatBtn.title = `Repeat: ${repeatMode}`;
-});
-
-els.npLikeBtn.addEventListener("click", async () => {
-  if (!currentUser || queueIndex < 0) return;
-  const track = queue[queueIndex];
-  els.npLikeBtn.classList.toggle("liked");
-  await setDoc(doc(db, "users", currentUser.uid, "liked", track.id), {
-    title: track.title, artist: track.artist, audioUrl: track.audioUrl,
-    albumArtUrl: track.albumArtUrl || null, likedAt: serverTimestamp()
-  });
-});
-
-function formatTime(sec) {
-  if (!isFinite(sec)) return "0:00";
-  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-async function logListeningHistory(track) {
-  if (!currentUser) return;
-  await addDoc(collection(db, "users", currentUser.uid, "history"), {
-    trackId: track.id, title: track.title, artist: track.artist, playedAt: serverTimestamp()
-  });
-}
-
-/* ============================================================================
-   AGI DJ PANEL — natural language → filtered queue
-   Client-side: a lightweight keyword/mood scorer runs instantly against the
-   tracks already synced into memory (mood/genre/bpm tags from the upload
-   pipeline above), so simple prompts resolve with zero latency.
-   For richer free-text understanding, this posts to AGI_DJ_ENDPOINT, a
-   server-side function that calls an LLM with the user's own library
-   metadata to rank/select tracks (see stub at bottom of file).
-   ============================================================================ */
-const djPanel = document.getElementById("djPanel");
-const djBody  = document.getElementById("djBody");
-const djInput = document.getElementById("djInput");
-
-document.getElementById("djToggleBtn").addEventListener("click", () => djPanel.classList.add("open"));
-document.getElementById("openDjNav").addEventListener("click", () => djPanel.classList.add("open"));
-document.getElementById("djCloseBtn").addEventListener("click", () => djPanel.classList.remove("open"));
-
-document.getElementById("djSendBtn").addEventListener("click", sendDjPrompt);
-djInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendDjPrompt(); });
-djBody.addEventListener("click", (e) => {
-  if (e.target.matches(".dj-chip")) sendDjPrompt(e.target.dataset.prompt);
-});
-
-async function sendDjPrompt(promptOverride) {
-  const prompt = (promptOverride || djInput.value).trim();
-  if (!prompt) return;
-  djInput.value = "";
-
-  appendDjMessage(prompt, "user");
-  const thinkingEl = appendDjThinking();
-
-  try {
-    // All currently-known tracks (owned + community) act as the candidate
-    // pool; only IDs + tags are sent server-side, never raw audio.
-    const candidateIds = getCandidateTrackIds();
-    const res = await fetch(AGI_DJ_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, candidateIds, uid: currentUser?.uid })
-    });
-
-    let matches;
-    if (res.ok) {
-      matches = await res.json(); // expected: { summary, tracks: [{id,title,artist,albumArtUrl,audioUrl}] }
-    } else {
-      matches = localMoodFallback(prompt); // graceful client-side fallback
-    }
-
-    thinkingEl.remove();
-    renderDjResponse(matches);
-  } catch (err) {
-    thinkingEl.remove();
-    const fallback = localMoodFallback(prompt);
-    renderDjResponse(fallback);
-  }
-}
-
-function appendDjMessage(text, role) {
-  const el = document.createElement("div");
-  el.className = `dj-msg ${role}`;
-  el.textContent = text;
-  djBody.appendChild(el);
-  djBody.scrollTop = djBody.scrollHeight;
-  return el;
-}
-function appendDjThinking() {
-  const el = document.createElement("div");
-  el.className = "dj-thinking";
-  el.innerHTML = "<span></span><span></span><span></span>";
-  djBody.appendChild(el);
-  djBody.scrollTop = djBody.scrollHeight;
-  return el;
-}
-
-function renderDjResponse(matches) {
-  const wrap = document.createElement("div");
-  wrap.className = "dj-msg assistant";
-
-  const summary = matches.summary || `Here's a queue for that.`;
-  const list = document.createElement("div");
-  list.className = "dj-result-list";
-
-  (matches.tracks || []).slice(0, 8).forEach(t => {
-    const row = document.createElement("div");
-    row.className = "dj-result";
-    row.innerHTML = `
-      <div class="r-art">${t.albumArtUrl ? `<img src="${t.albumArtUrl}">` : ""}</div>
-      <div class="r-text">
-        <div class="r-title">${escapeHtml(t.title)}</div>
-        <div class="r-meta">${escapeHtml(t.artist || "")}</div>
-      </div>`;
-    row.addEventListener("click", () => playTrack(t, matches.tracks));
-    list.appendChild(row);
-  });
-
-  wrap.textContent = summary;
-  wrap.appendChild(list);
-  djBody.appendChild(wrap);
-  djBody.scrollTop = djBody.scrollHeight;
-
-  if (matches.tracks?.length) playTrack(matches.tracks[0], matches.tracks);
-}
-
-// In-memory index kept in sync by the Firestore listeners above.
-const trackIndex = new Map();
-function getCandidateTrackIds() { return Array.from(trackIndex.keys()); }
-
-// Simple client-side keyword→tag scorer as an offline fallback when the
-// server endpoint isn't configured yet — replace/extend freely.
-const MOOD_KEYWORDS = {
-  energetic: ["workout", "gym", "energy", "hype", "pump", "run"],
-  calm:      ["calm", "chill", "study", "focus", "late-night", "acoustic", "relax"],
-  sad:       ["sad", "heartbreak", "rain", "lonely"],
-  happy:     ["happy", "upbeat", "party", "dance", "fun"]
-};
-function localMoodFallback(prompt) {
-  const lower = prompt.toLowerCase();
-  let mood = null;
-  for (const [m, words] of Object.entries(MOOD_KEYWORDS)) {
-    if (words.some(w => lower.includes(w))) { mood = m; break; }
-  }
-  const all = Array.from(trackIndex.values());
-  const scored = all.filter(t => !mood || (t.mood === mood) || (t.genre && lower.includes(t.genre.toLowerCase())));
-  return {
-    summary: mood
-      ? `Built a ${mood} queue from your library while the full AGI endpoint is offline.`
-      : `Here's a starting queue from your library — connect AGI_DJ_ENDPOINT for smarter matching.`,
-    tracks: (scored.length ? scored : all).slice(0, 8)
-  };
-}
-
-// Keep trackIndex updated alongside the render calls above.
-const _origRenderTrackCard = renderTrackCard;
-window.__trackIndexHook = (track) => trackIndex.set(track.id, track);
-
-/* ============================================================================
-   MISC UI: view switching (sidebar), search-as-filter, toasts
-   ============================================================================ */
-document.querySelectorAll("[data-view]").forEach(el => {
-  el.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
-    if (el.classList.contains("nav-item")) el.classList.add("active");
-    document.getElementById(el.dataset.view + "Row")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-});
-
-document.getElementById("searchInput").addEventListener("input", (e) => {
-  const term = e.target.value.trim().toLowerCase();
-  document.querySelectorAll(".track-card").forEach(card => {
-    const text = card.querySelector(".track-title").textContent.toLowerCase() + " " +
-                 card.querySelector(".track-meta").textContent.toLowerCase();
-    card.style.display = !term || text.includes(term) ? "" : "none";
-  });
-});
-
-function toast(msg) {
-  const el = document.createElement("div");
-  el.className = "toast";
-  el.textContent = msg;
-  document.getElementById("toastStack").appendChild(el);
-  setTimeout(() => el.remove(), 3200);
-}
-</script>
-
-<!--
-  ============================================================================
-  SERVER-SIDE PIECES (Firebase Cloud Functions — Node.js)
-  Deploy these separately; they are NOT executed by this HTML file.
-  ============================================================================
-
-  // functions/index.js  (excerpt)
-  const functions = require("firebase-functions");
-  const admin = require("firebase-admin");
-  admin.initializeApp();
-
-  // --- 1. Deep audio analysis on upload: BPM / genre / mood -----------------
-  // Triggered by the client's POST to /api/analyze-audio, or alternatively
-  // wire this as a Storage onFinalize trigger for a fully automatic pass.
-  exports.analyzeAudio = functions.https.onRequest(async (req, res) => {
-    const { storagePath, trackId, uid } = req.body;
-    // 1) Download the file from Storage (or stream it) into a scratch dir.
-    // 2) Run a BPM/key/genre estimator (e.g. essentia.js, or a Python
-    //    microservice using librosa) over the decoded waveform.
-    // 3) Optionally call a classification model for genre/mood tagging.
-    const analysis = { bpm: 128, genre: "Electronic", mood: "energetic" }; // placeholder
-    await admin.firestore().doc(`users/${uid}/tracks/${trackId}`).update(analysis);
-    res.json(analysis);
-  });
-
-  // --- 2. Mirror explicitly-published tracks into the public collection ----
-  exports.mirrorPublicTrack = functions.firestore
-    .document("users/{uid}/tracks/{trackId}")
-    .onUpdate(async (change, context) => {
-      const before = change.before.data(), after = change.after.data();
-      if (!before.public && after.public) {
-        // TODO: run a rights/licensing check here before mirroring —
-        // e.g. require the uploader to confirm ownership/license at
-        // publish time, and support takedown requests.
-        await admin.firestore().collection("tracks").doc(context.params.trackId).set({
-          ...after, ownerUid: context.params.uid
-        });
       }
-      if (before.public && !after.public) {
-        await admin.firestore().collection("tracks").doc(context.params.trackId).delete();
-      }
-    });
 
-  // --- 3. AGI DJ natural-language endpoint ----------------------------------
-  // Keep your LLM API key server-side only. This function takes the prompt
-  // plus a compact list of the user's own candidate tracks (id/title/
-  // artist/genre/bpm/mood — no audio bytes) and asks the model to select
-  // and order a queue, returned as { summary, tracks: [...] }.
-  exports.agiDj = functions.https.onRequest(async (req, res) => {
-    const { prompt, candidateIds, uid } = req.body;
-    // 1) Fetch metadata for candidateIds from Firestore.
-    // 2) Call your LLM provider's messages endpoint with a system prompt
-    //    instructing it to choose from ONLY the provided candidate list
-    //    and return strict JSON: { summary, trackIds: [...] }.
-    // 3) Resolve trackIds back to full track docs and respond.
-    res.json({ summary: "Queue generated.", tracks: [] }); // placeholder
-  });
-  ============================================================================
--->
+
+      try {
+
+        console.log(
+          "================================="
+        );
+
+        console.log(
+          "🎵 RRJIFY PLAYBACK"
+        );
+
+        console.log(
+          "Title:",
+          track.title
+        );
+
+        console.log(
+          "Artist:",
+          track.artist
+        );
+
+        console.log(
+          "Audio URL:",
+          track.audioUrl
+        );
+
+        console.log(
+          "Status:",
+          track.status
+        );
+
+        console.log(
+          "================================="
+        );
+
+
+        currentTrack =
+          track;
+
+
+        if (
+          contextQueue &&
+          contextQueue.length
+        ) {
+
+          queue =
+            contextQueue;
+
+          queueIndex =
+            queue.findIndex(
+              t =>
+                t.id === track.id
+            );
+
+
+          if (queueIndex < 0) {
+
+            queueIndex =
+              0;
+
+          }
+
+        } else {
+
+          queue =
+            [track];
+
+          queueIndex =
+            0;
+
+        }
+
+
+        updateNowPlayingUI(
+          track
+        );
+
+
+        audioEl.pause();
+
+        audioEl.currentTime =
+          0;
+
+
+        /*
+          IMPORTANT:
+          Remove old source first
+        */
+
+        audioEl.removeAttribute(
+          "src"
+        );
+
+        audioEl.load();
+
+
+        /*
+          Set new Firebase URL
+        */
+
+        audioEl.src =
+          track.audioUrl;
+
+        audioEl.load();
+
+
+        /*
+          Wait for browser to start playback
+        */
+
+        await audioEl.play();
+
+
+        console.log(
+          "✅ PLAYING:",
+          track.title
+        );
+
+
+      } catch (error) {
+
+        console.error(
+          "❌ PLAYBACK ERROR:",
+          error
+        );
+
+
+        if (
+          error.name ===
+          "NotSupportedError"
+        ) {
+
+          toast(
+            "Browser cannot play this audio format. Try MP3."
+          );
+
+        } else if (
+          error.name ===
+          "NotAllowedError"
+        ) {
+
+          toast(
+            "Browser blocked playback. Click Play again."
+          );
+
+        } else {
+
+          toast(
+            "Unable to play this song. Press F12 and check Console."
+          );
+
+        }
+
+      }
+
+    }
+
+
+    /* =====================================================
+       NOW PLAYING UI
+    ===================================================== */
+
+    function updateNowPlayingUI(
+      track
+    ) {
+
+      nowTitle.textContent =
+        track.title ||
+        "Untitled";
+
+
+      nowArtist.textContent =
+        track.artist ||
+        "Unknown Artist";
+
+
+      if (
+        track.albumArtUrl
+      ) {
+
+        nowCover.src =
+          track.albumArtUrl;
+
+        nowCover.style.display =
+          "block";
+
+      } else {
+
+        nowCover.removeAttribute(
+          "src"
+        );
+
+        nowCover.style.display =
+          "none";
+
+      }
+
+    }
+
+
+    /* =====================================================
+       PLAY / PAUSE
+    ===================================================== */
+
+    playBtn.addEventListener(
+      "click",
+      async () => {
+
+        if (!currentTrack) {
+
+          toast(
+            "Select a song first."
+          );
+
+          return;
+
+        }
+
+
+        if (
+          audioEl.paused
+        ) {
+
+          try {
+
+            await audioEl.play();
+
+          } catch (error) {
+
+            console.error(
+              error
+            );
+
+            toast(
+              "Playback was blocked. Click Play again."
+            );
+
+          }
+
+        } else {
+
+          audioEl.pause();
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       NEXT
+    ===================================================== */
+
+    nextBtn.addEventListener(
+      "click",
+      () => {
+
+        playNext();
+
+      }
+    );
+
+
+    function playNext() {
+
+      if (
+        !queue.length
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        queueIndex >=
+        queue.length - 1
+      ) {
+
+        queueIndex =
+          0;
+
+      } else {
+
+        queueIndex++;
+
+      }
+
+
+      const nextTrack =
+        queue[queueIndex];
+
+
+      if (nextTrack) {
+
+        playTrack(
+          nextTrack,
+          queue
+        );
+
+      }
+
+    }
+
+
+    /* =====================================================
+       PREVIOUS
+    ===================================================== */
+
+    prevBtn.addEventListener(
+      "click",
+      () => {
+
+        if (
+          !queue.length
+        ) {
+
+          return;
+
+        }
+
+
+        if (
+          audioEl.currentTime >
+          5
+        ) {
+
+          audioEl.currentTime =
+            0;
+
+          return;
+
+        }
+
+
+        if (
+          queueIndex <= 0
+        ) {
+
+          queueIndex =
+            queue.length - 1;
+
+        } else {
+
+          queueIndex--;
+
+        }
+
+
+        playTrack(
+          queue[queueIndex],
+          queue
+        );
+
+      }
+    );
+
+
+    /* =====================================================
+       SEEK
+    ===================================================== */
+
+    seekBar.addEventListener(
+      "input",
+      () => {
+
+        if (
+          Number.isFinite(
+            audioEl.duration
+          )
+        ) {
+
+          audioEl.currentTime =
+            Number(
+              seekBar.value
+            );
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       VOLUME
+    ===================================================== */
+
+    volumeBar.addEventListener(
+      "input",
+      () => {
+
+        audioEl.volume =
+          Number(
+            volumeBar.value
+          );
+
+      }
+    );
+
+
+    /* =====================================================
+       INITIALIZE COMMUNITY
+    ===================================================== */
+
+    subscribeToCommunity();
+
+
+    /* =====================================================
+       GLOBAL DEBUG
+    ===================================================== */
+
+    window.RRJIFY = {
+
+      audio:
+        audioEl,
+
+      playTrack,
+
+      queue,
+
+      trackIndex,
+
+      getCurrentTrack:
+        () => currentTrack
+
+    };
+
+
+    console.log(
+      "🚀 RRJIFY initialized successfully."
+    );
+
+  </script>
 
 </body>
 </html>
+<script type="module">
+
+/* =========================================================
+   RRJIFY — AGI DJ / SMART SEARCH
+========================================================= */
+
+const MOOD_KEYWORDS = {
+
+  chill: [
+    "chill",
+    "calm",
+    "relax",
+    "peace",
+    "peaceful",
+    "lofi",
+    "sleep"
+  ],
+
+  sad: [
+    "sad",
+    "emotional",
+    "heartbreak",
+    "broken",
+    "cry",
+    "alone"
+  ],
+
+  happy: [
+    "happy",
+    "joy",
+    "fun",
+    "party",
+    "dance",
+    "good mood"
+  ],
+
+  energetic: [
+    "energy",
+    "energetic",
+    "hype",
+    "gym",
+    "workout",
+    "power",
+    "hard"
+  ],
+
+  romantic: [
+    "romantic",
+    "love",
+    "lover",
+    "couple",
+    "romance"
+  ],
+
+  dark: [
+    "dark",
+    "villain",
+    "evil",
+    "night",
+    "dark vibe"
+  ]
+
+};
+
+
+/* =========================================================
+   SMART SEARCH UI
+========================================================= */
+
+function createSearchUI() {
+
+  const main =
+    document.querySelector("main");
+
+  if (!main) return;
+
+
+  const section =
+    document.createElement("section");
+
+  section.className =
+    "section";
+
+
+  section.innerHTML = `
+
+    <div class="section-header">
+
+      <h2>
+        🔎 Search & AGI DJ
+      </h2>
+
+      <span>
+        Ask for a vibe
+      </span>
+
+    </div>
+
+
+    <div class="upload-box">
+
+      <div
+        style="
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+        "
+      >
+
+        <input
+          id="agiPrompt"
+          type="text"
+          placeholder="Try: chill songs, sad songs, gym music..."
+          style="
+            flex:1;
+            min-width:220px;
+            background:#080808;
+            color:#fff;
+            border:1px solid #333;
+            border-radius:999px;
+            padding:13px 18px;
+            outline:none;
+          "
+        >
+
+        <button
+          id="agiSearchBtn"
+          class="upload-btn"
+        >
+          ✨ Ask AGI DJ
+        </button>
+
+      </div>
+
+
+      <div
+        id="agiResult"
+        style="
+          margin-top:18px;
+          color:#aaa;
+          line-height:1.6;
+        "
+      >
+        Ask for a mood, genre or type of music.
+      </div>
+
+
+      <div
+        id="agiTracks"
+        class="track-grid"
+        style="margin-top:18px;"
+      ></div>
+
+    </div>
+
+  `;
+
+
+  main.insertBefore(
+    section,
+    main.firstElementChild.nextElementSibling
+  );
+
+
+  document
+    .getElementById("agiSearchBtn")
+    .addEventListener(
+      "click",
+      runAGIDJ
+    );
+
+
+  document
+    .getElementById("agiPrompt")
+    .addEventListener(
+      "keydown",
+      event => {
+
+        if (
+          event.key === "Enter"
+        ) {
+
+          runAGIDJ();
+
+        }
+
+      }
+    );
+
+}
+
+
+/* =========================================================
+   GET MOOD
+========================================================= */
+
+function detectMood(prompt) {
+
+  const lower =
+    prompt
+      .toLowerCase()
+      .trim();
+
+
+  for (
+    const [mood, words]
+    of Object.entries(
+      MOOD_KEYWORDS
+    )
+  ) {
+
+    if (
+      words.some(
+        word =>
+          lower.includes(word)
+      )
+    ) {
+
+      return mood;
+
+    }
+
+  }
+
+
+  return null;
+
+}
+
+
+/* =========================================================
+   AGI DJ
+========================================================= */
+
+function runAGIDJ() {
+
+  const input =
+    document.getElementById(
+      "agiPrompt"
+    );
+
+  const result =
+    document.getElementById(
+      "agiResult"
+    );
+
+  const container =
+    document.getElementById(
+      "agiTracks"
+    );
+
+
+  if (!input) return;
+
+
+  const prompt =
+    input.value.trim();
+
+
+  if (!prompt) {
+
+    toast(
+      "Ask AGI DJ something first."
+    );
+
+    return;
+
+  }
+
+
+  const mood =
+    detectMood(
+      prompt
+    );
+
+
+  const allTracks =
+    Array.from(
+      trackIndex.values()
+    );
+
+
+  if (!allTracks.length) {
+
+    result.textContent =
+      "Your library is empty. Upload some songs first.";
+
+    container.innerHTML =
+      "";
+
+    return;
+
+  }
+
+
+  let matched =
+    allTracks.filter(
+      track => {
+
+        const text = `
+
+          ${track.title || ""}
+
+          ${track.artist || ""}
+
+          ${track.genre || ""}
+
+          ${track.mood || ""}
+
+          ${track.album || ""}
+
+        `.toLowerCase();
+
+
+        if (mood) {
+
+          if (
+            String(
+              track.mood || ""
+            ).toLowerCase()
+            === mood
+          ) {
+
+            return true;
+
+          }
+
+        }
+
+
+        return prompt
+          .toLowerCase()
+          .split(/\s+/)
+          .some(
+            word =>
+              word.length > 2 &&
+              text.includes(word)
+          );
+
+      }
+    );
+
+
+  if (!matched.length) {
+
+    matched =
+      allTracks;
+
+  }
+
+
+  matched =
+    matched.slice(
+      0,
+      8
+    );
+
+
+  const moodText =
+    mood
+      ? `I found a ${mood} vibe for you.`
+      : "I created a smart queue from your library.";
+
+
+  result.innerHTML = `
+
+    <strong
+      style="color:#fff;"
+    >
+      ✨ AGI DJ
+    </strong>
+
+    <br>
+
+    ${moodText}
+
+    <br>
+
+    <span
+      style="font-size:13px;color:#666;"
+    >
+      ${matched.length} track(s) selected.
+    </span>
+
+  `;
+
+
+  container.innerHTML =
+    "";
+
+
+  matched.forEach(
+    track => {
+
+      trackIndex.set(
+        track.id,
+        track
+      );
+
+
+      container.appendChild(
+        createAGITrackCard(
+          track
+        )
+      );
+
+    }
+  );
+
+
+  /*
+    Make AGI results the current queue
+  */
+
+  queue =
+    matched;
+
+
+  queueIndex =
+    0;
+
+}
+
+
+/* =========================================================
+   AGI TRACK CARD
+========================================================= */
+
+function createAGITrackCard(
+  track
+) {
+
+  const card =
+    document.createElement(
+      "div"
+    );
+
+
+  card.className =
+    "track-card";
+
+
+  const cover =
+    track.albumArtUrl ||
+    "";
+
+
+  card.innerHTML = `
+
+    <div class="cover">
+
+      ${
+        cover
+          ? `
+            <img
+              src="${escapeHTML(cover)}"
+              alt=""
+              loading="lazy"
+            >
+          `
+          : ""
+      }
+
+    </div>
+
+
+    <div class="track-title">
+      ${escapeHTML(
+        track.title ||
+        "Untitled"
+      )}
+    </div>
+
+
+    <div class="track-artist">
+      ${escapeHTML(
+        track.artist ||
+        "Unknown Artist"
+      )}
+    </div>
+
+
+    <div class="track-actions">
+
+      <span
+        class="status"
+      >
+        ${escapeHTML(
+          track.mood ||
+          track.genre ||
+          "Music"
+        )}
+      </span>
+
+      <button
+        class="play-small"
+      >
+        ▶
+      </button>
+
+    </div>
+
+  `;
+
+
+  const button =
+    card.querySelector(
+      ".play-small"
+    );
+
+
+  button.addEventListener(
+    "click",
+    event => {
+
+      event.stopPropagation();
+
+      playTrack(
+        track,
+        queue
+      );
+
+    }
+  );
+
+
+  card.addEventListener(
+    "click",
+    () => {
+
+      playTrack(
+        track,
+        queue
+      );
+
+    }
+  );
+
+
+  return card;
+
+}
+
+
+/* =========================================================
+   KEYBOARD SHORTCUTS
+========================================================= */
+
+document.addEventListener(
+  "keydown",
+  event => {
+
+    /*
+      Don't trigger shortcuts
+      while typing.
+    */
+
+    const tag =
+      document.activeElement?.tagName;
+
+
+    if (
+      tag === "INPUT" ||
+      tag === "TEXTAREA"
+    ) {
+
+      return;
+
+    }
+
+
+    /*
+      Space = play/pause
+    */
+
+    if (
+      event.code === "Space"
+    ) {
+
+      event.preventDefault();
+
+      if (
+        currentTrack
+      ) {
+
+        if (
+          audioEl.paused
+        ) {
+
+          audioEl.play()
+            .catch(
+              console.error
+            );
+
+        } else {
+
+          audioEl.pause();
+
+        }
+
+      }
+
+    }
+
+
+    /*
+      Arrow right = next
+    */
+
+    if (
+      event.code === "ArrowRight"
+    ) {
+
+      if (
+        currentTrack
+      ) {
+
+        audioEl.currentTime =
+          Math.min(
+            audioEl.currentTime + 5,
+            audioEl.duration || Infinity
+          );
+
+      }
+
+    }
+
+
+    /*
+      Arrow left = previous 5 sec
+    */
+
+    if (
+      event.code === "ArrowLeft"
+    ) {
+
+      audioEl.currentTime =
+        Math.max(
+          audioEl.currentTime - 5,
+          0
+        );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   CREATE UI
+========================================================= */
+
+createSearchUI();
+
+
+console.log(
+  "✨ AGI DJ initialized."
+);
+
+</script>
