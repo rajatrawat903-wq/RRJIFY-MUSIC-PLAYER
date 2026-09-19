@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>RRJIFY</title>
+<title>RRJIFY · Creator Music Community</title>
 
 <!--
 ================================================================================
@@ -1958,6 +1958,40 @@ async function adminRemoveTrack(track) {
   } catch (err) { toast(explain(err), "err"); }
 }
 
+/* Admin-only, privacy-conscious overview. The dashboard shows conversation
+   activity and the latest chat preview; it intentionally does not copy or
+   export message history. Full access remains protected by the Firestore
+   rules below and should only be used in accordance with your published
+   community policy. */
+async function loadAdminChatActivity(host) {
+  if (!S.isAdmin) return;
+  host.replaceChildren(el("div", { class: "section-note", text: "Loading conversation activity…" }));
+  try {
+    const snap = await getDocs(collection(db, "chats"));
+    const chats = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.lastMessageAt?.toMillis?.() || 0) - (a.lastMessageAt?.toMillis?.() || 0))
+      .slice(0, 12);
+    host.replaceChildren();
+    if (!chats.length) {
+      host.append(el("div", { class: "section-note", text: "No conversations have been created yet." }));
+      return;
+    }
+    chats.forEach(chat => {
+      const label = chat.isGroup ? (chat.name || "Untitled group") : "Direct message";
+      host.append(el("div", { class: "user-row" },
+        avatarNode("sm", label),
+        el("div", { class: "ur-main" },
+          el("div", { class: "ur-name", text: label }),
+          el("div", { class: "ur-sub", text: `${chat.memberIds?.length || 0} members · ${fmtWhen(chat.lastMessageAt) || "no activity"}` })
+        ),
+        el("span", { class: "tag", text: chat.lastMessage ? "Active" : "Empty" })
+      ));
+    });
+  } catch (err) {
+    host.replaceChildren(el("div", { class: "section-note", text: explain(err) }));
+  }
+}
+
 async function deleteOwnTrack(track) {
   if (!S.user || track.ownerId !== S.user.uid) return;
   const ok = await confirmModal({
@@ -3100,6 +3134,13 @@ function viewAdmin(host) {
     stat(S.chats.length, "Your conversations")
   ));
 
+  // Admin activity is loaded only on demand so the normal dashboard stays fast.
+  const activityWrap = el("div");
+  host.append(sectionBlock("Conversation activity", "Recent private and group-chat activity for platform oversight", activityWrap));
+  activityWrap.append(el("button", {
+    class: "btn btn-ghost", text: "Load activity", onclick: () => loadAdminChatActivity(activityWrap)
+  }));
+
   // --- catalogue moderation
   const tableWrap = el("div");
   host.append(sectionBlock("Public catalogue", "Anything here is visible to every user", tableWrap));
@@ -3303,10 +3344,10 @@ if (!location.hash) location.hash = "#/home";
 
 window.RRJIFY = {
   audio, state: S, playTrack, db, auth,
-  version: "3.0"
+  version: "4.0"
 };
 
-console.log("%cRRJIFY 3.0", "color:#1ed760;font-weight:900;font-size:15px");
+console.log("%cRRJIFY 4.0", "color:#1ed760;font-weight:900;font-size:15px");
 console.log("Debug handle: window.RRJIFY");
 </script>
 
@@ -3416,14 +3457,16 @@ service cloud.firestore {
 
     // ---- chat --------------------------------------------------------------
     match /chats/{chatId} {
-      allow read:   if signedIn() && me() in resource.data.memberIds;
+      // The listed administrator can review conversation activity for platform
+      // moderation. Tell users about this in your community policy.
+      allow read:   if signedIn() && (me() in resource.data.memberIds || isAdmin());
       allow create: if signedIn() && me() in request.resource.data.memberIds;
       allow update: if signedIn() && me() in resource.data.memberIds;
       allow delete: if signedIn() && resource.data.createdBy == me();
 
       match /messages/{messageId} {
-        allow read: if signedIn()
-                    && me() in get(/databases/$(database)/documents/chats/$(chatId)).data.memberIds;
+        allow read: if signedIn() && (me() in get(/databases/$(database)/documents/chats/$(chatId)).data.memberIds
+                    || isAdmin());
         allow create: if signedIn()
                       && request.resource.data.senderId == me()
                       && me() in get(/databases/$(database)/documents/chats/$(chatId)).data.memberIds;
