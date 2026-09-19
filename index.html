@@ -356,7 +356,7 @@ import {
   onSnapshot, query, orderBy, where, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
-  getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL
+  getStorage, ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 /* ==========================================================================
@@ -427,6 +427,8 @@ let isShuffle    = false;
 let repeatMode   = "off";           // off | all | one
 let selectedFile = null;
 let isUploading  = false;
+let pendingMetaPromise = null;   // metadata read started at file-select time
+let pendingLocalUrl    = null;   // blob: URL for instant local playback
 
 const trackIndex = new Map();
 
@@ -438,6 +440,13 @@ const audioEl = new Audio();
 audioEl.volume  = 0.8;
 audioEl.preload = "metadata";
 audioEl.crossOrigin = "anonymous";
+
+/* Moderation. An admin can unpublish ANY track from the community feed and
+   is exempt from nothing else — the licensing confirmation below applies to
+   every account, admins included. Enforced for real in the Firestore rules
+   at the bottom of this file; this constant only drives the UI. */
+const ADMIN_EMAILS = ["rajatrawat903@gmail.com"];
+let isAdmin = false;
 
 const ALLOWED_EXT = ["mp3", "wav", "flac"];
 const MAX_BYTES   = 120 * 1024 * 1024;
@@ -578,8 +587,10 @@ onAuthStateChanged(auth, (user) => {
   if (unsubLibrary)   { unsubLibrary();   unsubLibrary = null; }
   if (unsubCommunity) { unsubCommunity(); unsubCommunity = null; }
 
+  isAdmin = !!user && ADMIN_EMAILS.includes((user.email || "").toLowerCase());
+
   if (user) {
-    userName.textContent = user.displayName || user.email || "User";
+    userName.textContent = (user.displayName || user.email || "User") + (isAdmin ? " · admin" : "");
     loginBtn.classList.add("hidden");
     logoutBtn.classList.remove("hidden");
     libraryEmpty.textContent = "No songs uploaded yet.";
@@ -596,6 +607,7 @@ onAuthStateChanged(auth, (user) => {
     subscribeToCommunity();
   } else {
     userName.textContent = "Not signed in";
+    isAdmin = false;
     loginBtn.classList.remove("hidden");
     logoutBtn.classList.add("hidden");
     libraryRow.innerHTML = "";
@@ -640,6 +652,13 @@ function acceptFile(file) {
 
   // FIX #10: keep our own reference instead of depending on the input's FileList.
   selectedFile = file;
+
+  // SPEED: kick off tag reading and a local blob URL the instant the file is
+  // chosen, so by the time Upload is clicked both are already done. Also lets
+  // the track play locally at full speed while the bytes are still going up.
+  if (pendingLocalUrl) URL.revokeObjectURL(pendingLocalUrl);
+  pendingLocalUrl = URL.createObjectURL(file);
+  pendingMetaPromise = readMetadata(file);
   progressText.textContent =
     `${file.name} — ${(file.size / 1024 / 1024).toFixed(2)} MB` +
     (currentUser ? " · ready to upload" : " · sign in to upload");
@@ -648,6 +667,8 @@ function acceptFile(file) {
 
 function resetFileSelection() {
   selectedFile = null;
+  pendingMetaPromise = null;
+  pendingLocalUrl = null;        // ownership passes to the track once uploaded
   audioFile.value = "";
   progressText.textContent = "Select a file to upload.";
   syncUploadButton();
@@ -678,7 +699,7 @@ function readMetadata(file) {
     });
     probe.addEventListener("error", () => URL.revokeObjectURL(objectUrl));
 
-    if (!window.jsmediatags) { setTimeout(done, 600); return; }
+    if (!window.jsmediatags) { setTimeout(done, 250); return; }
 
     window.jsmediatags.read(file, {
       onSuccess: (tag) => {
@@ -692,12 +713,12 @@ function readMetadata(file) {
             meta.coverDataUrl = `data:${t.picture.format};base64,${bytesToBase64(bytes)}`;
           } catch (e) { console.warn("cover art decode failed", e); }
         }
-        setTimeout(done, 400);
+        setTimeout(done, 200);
       },
-      onError: () => setTimeout(done, 400)
+      onError: () => setTimeout(done, 200)
     });
 
-    setTimeout(done, 3000); // hard timeout so upload never hangs on tag reading
+    setTimeout(done, 1500); // hard timeout so upload never hangs on tag reading
   });
 }
 
@@ -707,108 +728,132 @@ function readMetadata(file) {
 uploadBtn.addEventListener("click", uploadSong);
 
 async function uploadSong() {
-  if (!currentUser) { toast("Please sign in first.", true); return; }
+  if (!currentUser)  { toast("Please sign in first.", true); return; }
   if (!selectedFile) { toast("Select a song first.", true); return; }
 
-  const file = selectedFile;
+  const file      = selectedFile;
   const extension = extOf(file.name);
+  const localUrl  = pendingLocalUrl;
+  const metaPromise = pendingMetaPromise || readMetadata(file);
+  const fallbackTitle = file.name.replace(/\.[^/.]+$/, "");
 
   isUploading = true;
   syncUploadButton();
   progressBar.style.width = "0%";
 
-  let trackRef = null;
+  const trackRef = doc(collection(db, "users", currentUser.uid, "tracks"));
+  const trackId  = trackRef.id;
+  const path     = `users/${currentUser.uid}/tracks/${trackId}.${extension}`;
+  const fileRef  = storageRef(storage, path);
+
+  // Free the input straight away so the user can queue the next file.
+  resetFileSelection();
 
   try {
-    progressText.textContent = "Reading metadata…";
-    const meta = await readMetadata(file);
+    /* ------------------------------------------------------------------
+       SPEED FIX 1 — start the bytes IMMEDIATELY.
+       Previously this awaited a 3s metadata read and a Firestore write
+       before touching Storage. Now the transfer begins on line one and
+       everything else happens alongside it.
 
-    const fallbackTitle = file.name.replace(/\.[^/.]+$/, "");
+       SPEED FIX 2 — small files skip the resumable protocol. A resumable
+       upload costs an extra session-creation round trip, which dominates
+       total time for anything under a few MB. uploadBytes is one request.
+       ------------------------------------------------------------------ */
+    const SMALL = 5 * 1024 * 1024;
+    let audioUploadPromise;
 
-    progressText.textContent = "Creating song record…";
+    if (file.size <= SMALL) {
+      progressText.textContent = "Uploading…";
+      progressBar.style.width = "35%";
+      audioUploadPromise = uploadBytes(fileRef, file, {
+        contentType: file.type || `audio/${extension}`,
+        cacheControl: "public,max-age=31536000,immutable",
+        customMetadata: { ownerId: currentUser.uid, trackId }
+      });
+    } else {
+      const task = uploadBytesResumable(fileRef, file, {
+        contentType: file.type || `audio/${extension}`,
+        cacheControl: "public,max-age=31536000,immutable",
+        customMetadata: { ownerId: currentUser.uid, trackId }
+      });
+      task.on("state_changed", (snap) => {
+        const pct = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
+        progressBar.style.width = `${pct}%`;
+        progressText.textContent = `Uploading ${Math.round(pct)}%`;
+      });
+      audioUploadPromise = task;
+    }
 
-    trackRef = doc(collection(db, "users", currentUser.uid, "tracks"));
-    const trackId = trackRef.id;
+    /* SPEED FIX 3 — write the Firestore doc in PARALLEL with the transfer.
+       The card appears in the library instantly and playback can start from
+       the local blob while the network catches up. */
+    const meta = await metaPromise;          // already resolved in practice
 
-    await setDoc(trackRef, {
+    const optimistic = {
       title:       meta.title  || fallbackTitle,
       artist:      meta.artist || currentUser.displayName || "Unknown Artist",
       album:       meta.album  || "RRJIFY Uploads",
       durationSec: meta.durationSec ?? null,
-      mood:        null,
-      genre:       null,
-      bpm:         null,
-      albumArtUrl: null,
-      fileName:    file.name,
-      fileSize:    file.size,
-      mimeType:    file.type || `audio/${extension}`,
+      mood: null, genre: null, bpm: null, albumArtUrl: null,
+      fileName: file.name, fileSize: file.size,
+      mimeType: file.type || `audio/${extension}`,
       extension,
-      status:      "processing",
-      public:      false,          // private by default — publish is opt-in
-      ownerId:     currentUser.uid,
-      ownerName:   currentUser.displayName || "RRJIFY user",
-      audioUrl:    "",
-      storagePath: "",
-      createdAt:   serverTimestamp()
-    });
+      status:   "uploading",
+      public:   false,
+      ownerId:  currentUser.uid,
+      ownerName: currentUser.displayName || "RRJIFY user",
+      audioUrl: "", storagePath: path,
+      createdAt: serverTimestamp()
+    };
 
-    /* ---- audio bytes ---- */
-    const path = `users/${currentUser.uid}/tracks/${trackId}.${extension}`;
-    const fileRef = storageRef(storage, path);
+    const docPromise = setDoc(trackRef, optimistic);
 
-    progressText.textContent = "Uploading…";
-
-    const uploadTask = uploadBytesResumable(fileRef, file, {
-      contentType: file.type || `audio/${extension}`,
-      customMetadata: { ownerId: currentUser.uid, trackId }
-    });
-
-    await new Promise((resolve, reject) => {
-      uploadTask.on("state_changed",
-        (snap) => {
-          const percent = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
-          progressBar.style.width = `${percent}%`;
-          progressText.textContent = `Uploading ${Math.round(percent)}%`;
-        },
-        reject,
-        resolve
-      );
-    });
-
-    progressText.textContent = "Generating playback URL…";
-    const audioUrl = await getDownloadURL(fileRef);
-
-    /* ---- cover art (optional) ---- */
-    let albumArtUrl = null;
-    if (meta.coverDataUrl) {
-      try {
-        const artRef = storageRef(storage, `users/${currentUser.uid}/tracks/${trackId}_cover.jpg`);
-        await uploadBytesResumable(artRef, dataURLToBlob(meta.coverDataUrl), { contentType: "image/jpeg" });
-        albumArtUrl = await getDownloadURL(artRef);
-      } catch (e) {
-        console.warn("Cover art upload skipped:", e);
-      }
+    // Make it playable RIGHT NOW from the local file, before the upload ends.
+    if (localUrl) {
+      const localTrack = { id: trackId, ...optimistic, audioUrl: localUrl, status: "ready" };
+      trackIndex.set(trackId, localTrack);
     }
 
-    await updateDoc(trackRef, { audioUrl, storagePath: path, albumArtUrl, status: "ready" });
+    /* SPEED FIX 4 — cover art uploads CONCURRENTLY with the audio instead of
+       waiting for it to finish. */
+    let coverPromise = Promise.resolve(null);
+    if (meta.coverDataUrl) {
+      const artRef = storageRef(storage, `users/${currentUser.uid}/tracks/${trackId}_cover.jpg`);
+      coverPromise = uploadBytes(artRef, dataURLToBlob(meta.coverDataUrl), {
+        contentType: "image/jpeg",
+        cacheControl: "public,max-age=31536000,immutable"
+      }).then(() => getDownloadURL(artRef)).catch((e) => {
+        console.warn("Cover art skipped:", e);
+        return null;
+      });
+    }
+
+    await Promise.all([audioUploadPromise, docPromise]);
+
+    const [audioUrl, albumArtUrl] = await Promise.all([
+      getDownloadURL(fileRef),
+      coverPromise
+    ]);
+
+    await updateDoc(trackRef, { audioUrl, albumArtUrl, status: "ready" });
 
     progressBar.style.width = "100%";
-    progressText.textContent = "Uploaded successfully.";
+    progressText.textContent = "Uploaded.";
     toast("Song added to your library.");
-    resetFileSelection();
 
     setTimeout(() => {
       progressBar.style.width = "0%";
       progressText.textContent = "Select a file to upload.";
-    }, 3000);
+    }, 2500);
 
   } catch (error) {
     console.error("UPLOAD FAILED —", error.code, error.message, error);
     progressText.textContent = "Upload failed.";
     toast(explainFirebaseError(error), true);
-
-    // Don't leave an orphan "processing" doc behind.
-    if (trackRef) { deleteDoc(trackRef).catch(() => {}); }
+    deleteDoc(trackRef).catch(() => {});
+    trackIndex.delete(trackId);
+    if (localUrl) URL.revokeObjectURL(localUrl);
   } finally {
     isUploading = false;
     syncUploadButton();
@@ -828,6 +873,12 @@ function subscribeToLibrary(uid) {
       libraryEmpty.classList.add("hidden");
       snap.forEach((d) => {
         const track = { id: d.id, ...d.data() };
+        // Keep the local blob: URL while the upload is still in flight, so
+        // the track stays instantly playable instead of going dead.
+        const existing = trackIndex.get(track.id);
+        if (!track.audioUrl && existing?.audioUrl?.startsWith("blob:")) {
+          track.audioUrl = existing.audioUrl;
+        }
         trackIndex.set(track.id, track);
         libraryRow.appendChild(renderTrackCard(track, { owned: true }));
       });
@@ -878,6 +929,20 @@ function subscribeToCommunity() {
    Publishing is deliberate and per-track. Only publish music you own or are
    licensed to share.
    ========================================================================== */
+/* Moderation: pull any track out of the public feed. The owner's private
+   copy is untouched — this only removes it from what everyone else sees. */
+async function adminRemove(track) {
+  if (!isAdmin) return;
+  if (!confirm(`Remove "${track.title}" by ${track.ownerName || "unknown"} from the community feed?`)) return;
+  try {
+    await deleteDoc(doc(db, "tracks", track.id));
+    toast("Removed from the community feed.");
+  } catch (error) {
+    console.error("ADMIN REMOVE ERROR:", error);
+    toast(explainFirebaseError(error), true);
+  }
+}
+
 async function togglePublish(track) {
   if (!currentUser || track.ownerId !== currentUser.uid) return;
   if (track.status !== "ready") { toast("Wait for the upload to finish.", true); return; }
@@ -885,9 +950,13 @@ async function togglePublish(track) {
   const nowPublic = !track.public;
 
   if (nowPublic) {
+    // Applies to every account, admin included.
     const ok = confirm(
-      `Publish "${track.title}" so other RRJIFY users can find it?\n\n` +
-      `Only publish music you created or are licensed to share.`
+      `Publish "${track.title}" to the public community feed?\n\n` +
+      `By continuing you confirm you created this recording or hold the ` +
+      `rights to distribute it. Publishing music you don't have rights to ` +
+      `is copyright infringement, and takedown notices go to the owner of ` +
+      `this Firebase project.`
     );
     if (!ok) return;
   }
@@ -933,7 +1002,11 @@ function renderTrackCard(track, options = {}) {
   if (track.genre) tags.push(`<span class="tag">${escapeHTML(track.genre)}</span>`);
   if (track.mood)  tags.push(`<span class="tag">${escapeHTML(track.mood)}</span>`);
   if (track.durationSec) tags.push(`<span class="tag">${formatTime(track.durationSec)}</span>`);
-  if (owned) tags.push(`<span class="tag ${track.public ? "accent" : ""}">${track.public ? "Public" : "Private"}</span>`);
+  if (owned) {
+    tags.push(track.status === "uploading"
+      ? `<span class="tag">Syncing…</span>`
+      : `<span class="tag ${track.public ? "accent" : ""}">${track.public ? "Public" : "Private"}</span>`);
+  }
 
   card.innerHTML = `
     <div class="cover">${cover}</div>
@@ -943,7 +1016,9 @@ function renderTrackCard(track, options = {}) {
     <div class="track-actions">
       ${owned
         ? `<button class="pub-btn ${track.public ? "on" : ""}" type="button">${track.public ? "Unpublish" : "Publish"}</button>`
-        : `<span class="status">${escapeHTML(track.ownerName || "Community")}</span>`}
+        : (isAdmin
+            ? `<button class="pub-btn" type="button" data-admin="1">Remove</button>`
+            : `<span class="status">${escapeHTML(track.ownerName || "Community")}</span>`)}
       <button class="play-small" type="button" aria-label="Play">▶</button>
     </div>
   `;
@@ -964,7 +1039,8 @@ function renderTrackCard(track, options = {}) {
   if (pubButton) {
     pubButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      togglePublish(track);
+      if (pubButton.dataset.admin) adminRemove(track);
+      else togglePublish(track);
     });
   }
 
@@ -1270,14 +1346,24 @@ service cloud.firestore {
       }
     }
 
-    // Community feed: anyone signed in can read; only the owner can write.
+    // Community feed: anyone signed in can read; only the owner can publish.
+    // Admins can DELETE anyone's entry (moderation) but cannot create or
+    // edit tracks on someone else's behalf.
+    function isAdmin() {
+      return request.auth != null
+             && request.auth.token.email in ['rajatrawat903@gmail.com']
+             && request.auth.token.email_verified == true;
+    }
+
     match /tracks/{trackId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
                     && request.resource.data.ownerId == request.auth.uid
                     && request.resource.data.public == true;
-      allow update, delete: if request.auth != null
-                            && resource.data.ownerId == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.ownerId == request.auth.uid;
+      allow delete: if request.auth != null
+                    && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
   }
 }
