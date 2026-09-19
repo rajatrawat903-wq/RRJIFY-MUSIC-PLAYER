@@ -4,14 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>RRJIFY · Creator Music Community</title>
-
 <!--
 ================================================================================
   RRJIFY  —  social music platform
 ================================================================================
   ARCHITECTURE
     Single-file app, no build step. Hash router drives independent views.
-
     #/home        feed of followed artists + recents
     #/explore     public community catalogue + search
     #/library     your uploads, liked tracks, playlists
@@ -22,7 +20,6 @@
     #/profile/:uid  public profile, follow/unfollow
     #/settings    account, playback, audio quality, storage
     #/admin       moderation dashboard (admins only)
-
   FIRESTORE SCHEMA
     users/{uid}                     profile
     users/{uid}/tracks/{id}         private library (source of truth)
@@ -36,12 +33,10 @@
     chats/{chatId}                  {memberIds[], isGroup, name, lastMessage}
     chats/{chatId}/messages/{id}    {senderId, type:text|track, ...}
     reports/{id}                    moderation queue
-
   Security rules are at the very bottom of this file. Paste them or nothing
   will read or write.
 ================================================================================
 -->
-
 <style>
 /* ===========================================================================
    TOKENS
@@ -74,7 +69,6 @@
   --bg:#f6f8f9; --bg-2:#fff; --panel:#fff; --panel-2:#f1f4f6; --panel-3:#e6ebee;
   --line:#e2e8ec; --line-2:#cfd8de; --text:#10151a; --muted:#5d6a75; --muted-2:#8b959f;
 }
-
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
@@ -95,7 +89,6 @@ input,textarea,select{outline:none}
 ::-webkit-scrollbar-track{background:transparent}
 .hidden{display:none !important}
 input[type=range]{accent-color:var(--accent)}
-
 /* ===========================================================================
    SHELL
    =========================================================================== */
@@ -105,7 +98,6 @@ input[type=range]{accent-color:var(--accent)}
   grid-template-rows:var(--header) 1fr var(--player);
   grid-template-areas:"side head" "side view" "play play";
 }
-
 /* --------- sidebar --------- */
 .sidebar{
   grid-area:side;background:var(--bg-2);border-right:1px solid var(--line);
@@ -118,7 +110,6 @@ input[type=range]{accent-color:var(--accent)}
   display:grid;place-items:center;font-weight:900;color:#04120a;font-size:16px;flex-shrink:0;
 }
 .brand-word{font-size:20px;font-weight:900;letter-spacing:-.03em}
-
 .nav{display:flex;flex-direction:column;gap:2px}
 .nav-label{
   font-size:10.5px;font-weight:700;color:var(--muted-2);
@@ -137,10 +128,8 @@ input[type=range]{accent-color:var(--accent)}
   border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:800;
 }
 .nav-item.admin-only.active{background:var(--danger-soft);color:var(--danger)}
-
 .side-divider{height:1px;background:var(--line);margin:2px 6px}
 .side-foot{margin-top:auto;padding:8px;color:var(--muted-2);font-size:11px;line-height:1.5}
-
 /* --------- header --------- */
 .header{
   grid-area:head;border-bottom:1px solid var(--line);
@@ -154,7 +143,6 @@ input[type=range]{accent-color:var(--accent)}
 }
 .nav-arrows button:hover{color:var(--text)}
 .nav-arrows svg{width:15px;height:15px}
-
 .search{
   flex:1;max-width:460px;display:flex;align-items:center;gap:10px;
   background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:9px 16px;
@@ -162,9 +150,7 @@ input[type=range]{accent-color:var(--accent)}
 .search svg{width:16px;height:16px;color:var(--muted-2);flex-shrink:0}
 .search input{background:none;border:none;width:100%;font-size:13.5px}
 .search input::placeholder{color:var(--muted-2)}
-
 .head-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-
 .icon-btn{
   width:36px;height:36px;border-radius:50%;background:var(--panel-2);
   display:grid;place-items:center;color:var(--muted);position:relative;
@@ -176,7 +162,6 @@ input[type=range]{accent-color:var(--accent)}
   position:absolute;top:6px;right:7px;width:8px;height:8px;border-radius:50%;
   background:var(--accent);border:2px solid var(--bg-2);
 }
-
 .btn{
   border-radius:999px;padding:9px 18px;font-weight:700;font-size:13px;
   transition:transform .1s var(--ease),background .15s var(--ease),opacity .15s;
@@ -191,7 +176,6 @@ input[type=range]{accent-color:var(--accent)}
 .btn-danger{background:var(--danger-soft);border:1px solid rgba(255,92,92,.4);color:var(--danger)}
 .btn-sm{padding:6px 13px;font-size:12px}
 .btn svg{width:15px;height:15px}
-
 .avatar{
   border-radius:50%;background:var(--panel-3);overflow:hidden;flex-shrink:0;
   display:grid;place-items:center;font-weight:800;color:var(--muted);
@@ -201,45 +185,37 @@ input[type=range]{accent-color:var(--accent)}
 .avatar.sm{width:38px;height:38px;font-size:13px}
 .avatar.md{width:52px;height:52px;font-size:17px}
 .avatar.lg{width:120px;height:120px;font-size:42px}
-
 .admin-chip{
   font-size:9.5px;font-weight:900;letter-spacing:.06em;
   background:var(--danger-soft);color:var(--danger);
   border:1px solid rgba(255,92,92,.35);border-radius:5px;padding:2px 6px;
 }
-
 /* --------- view --------- */
 .view{grid-area:view;overflow-y:auto;padding:26px 30px 60px;scroll-behavior:smooth}
 .view-head{margin-bottom:24px}
 .view-title{font-size:27px;font-weight:900;letter-spacing:-.025em}
 .view-sub{color:var(--muted);margin-top:5px;font-size:13.5px;line-height:1.5;max-width:60ch}
-
 .section{margin-bottom:36px}
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
 .section-title{font-size:18px;font-weight:800;letter-spacing:-.015em}
 .section-note{font-size:12.5px;color:var(--muted-2)}
-
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);padding:20px}
 .card + .card{margin-top:14px}
 .card-title{font-size:15px;font-weight:800;margin-bottom:4px}
 .card-sub{font-size:12.5px;color:var(--muted);line-height:1.55;margin-bottom:16px}
-
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(178px,1fr))}
 .grid.wide{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
-
 .empty{
   border:1px dashed var(--line-2);border-radius:var(--r-m);
   padding:40px 24px;text-align:center;color:var(--muted-2);font-size:13.5px;line-height:1.6;
 }
 .empty strong{display:block;color:var(--text);font-size:15px;margin-bottom:6px;font-weight:800}
 .empty .btn{margin-top:14px}
-
 .skeleton{
   background:linear-gradient(90deg,var(--panel) 25%,var(--panel-2) 50%,var(--panel) 75%);
   background-size:200% 100%;animation:shimmer 1.3s infinite;border-radius:var(--r-s);
 }
 @keyframes shimmer{to{background-position:-200% 0}}
-
 /* --------- track card --------- */
 .tcard{
   background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);
@@ -276,7 +252,6 @@ input[type=range]{accent-color:var(--accent)}
 .mini-btn:hover{color:var(--text);border-color:var(--muted-2)}
 .mini-btn.on{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
 .mini-btn.danger{color:var(--danger);border-color:rgba(255,92,92,.35)}
-
 /* --------- track row (list) --------- */
 .trow{
   display:flex;align-items:center;gap:13px;padding:9px 11px;border-radius:var(--r-s);
@@ -297,7 +272,6 @@ input[type=range]{accent-color:var(--accent)}
 .trow-actions button:hover{background:var(--panel-3);color:var(--text)}
 .trow-actions button.on{color:var(--accent)}
 .trow-actions svg{width:15px;height:15px}
-
 /* --------- forms --------- */
 .field{margin-bottom:16px}
 .field label{display:block;font-size:12.5px;font-weight:700;margin-bottom:7px;color:var(--muted)}
@@ -312,7 +286,6 @@ input[type=range]{accent-color:var(--accent)}
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b959f' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
   background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:38px;
 }
-
 .row-setting{
   display:flex;align-items:center;justify-content:space-between;gap:20px;
   padding:15px 0;border-bottom:1px solid var(--line);
@@ -321,12 +294,10 @@ input[type=range]{accent-color:var(--accent)}
 .row-setting-text strong{display:block;font-size:13.5px;font-weight:700;margin-bottom:3px}
 .row-setting-text span{font-size:12px;color:var(--muted);line-height:1.5}
 .row-setting-ctl{flex-shrink:0;min-width:150px;display:flex;justify-content:flex-end}
-
 .switch{width:44px;height:25px;border-radius:999px;background:var(--panel-3);position:relative;transition:background .18s var(--ease);flex-shrink:0}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:var(--muted);transition:.18s var(--ease)}
 .switch.on{background:var(--accent)}
 .switch.on::after{left:22px;background:#04120a}
-
 .dropzone{
   border:2px dashed var(--line-2);border-radius:var(--r-m);padding:38px 22px;text-align:center;
   color:var(--muted);transition:.16s var(--ease);cursor:pointer;
@@ -335,7 +306,6 @@ input[type=range]{accent-color:var(--accent)}
 .dropzone.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .dropzone strong{display:block;font-size:15px;color:var(--text);margin-bottom:6px;font-weight:800}
 .dropzone small{display:block;color:var(--muted-2);margin-top:8px;font-size:11.5px}
-
 .queue-item{
   display:flex;align-items:center;gap:13px;padding:13px;border:1px solid var(--line);
   border-radius:var(--r-s);background:var(--bg-2);margin-bottom:9px;
@@ -346,13 +316,11 @@ input[type=range]{accent-color:var(--accent)}
 .bar{height:5px;background:var(--panel-3);border-radius:99px;overflow:hidden;margin-top:8px}
 .bar > i{display:block;height:100%;width:0;background:var(--accent);transition:width .22s var(--ease)}
 .bar.err > i{background:var(--danger)}
-
 /* --------- stats --------- */
 .stats{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);padding:18px}
 .stat b{display:block;font-size:26px;font-weight:900;letter-spacing:-.03em}
 .stat span{font-size:12px;color:var(--muted);margin-top:4px;display:block}
-
 /* --------- profile --------- */
 .profile-head{display:flex;gap:26px;align-items:flex-end;margin-bottom:30px;flex-wrap:wrap}
 .profile-meta h1{font-size:40px;font-weight:900;letter-spacing:-.035em;line-height:1.1;margin-bottom:8px}
@@ -360,7 +328,6 @@ input[type=range]{accent-color:var(--accent)}
 .profile-counts{display:flex;gap:20px;font-size:13px;color:var(--muted);margin-bottom:14px}
 .profile-counts b{color:var(--text);font-weight:800}
 .profile-actions{display:flex;gap:9px;flex-wrap:wrap}
-
 .user-row{
   display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r-s);
   transition:background .13s;cursor:pointer;
@@ -369,7 +336,6 @@ input[type=range]{accent-color:var(--accent)}
 .user-row .ur-main{flex:1;min-width:0}
 .user-row .ur-name{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-row .ur-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
 /* --------- chat --------- */
 .chat-layout{display:grid;grid-template-columns:290px 1fr;gap:18px;height:100%;min-height:0}
 .chat-list{border-right:1px solid var(--line);padding-right:16px;overflow-y:auto}
@@ -383,7 +349,6 @@ input[type=range]{accent-color:var(--accent)}
 .chat-item .ci-name{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-item .ci-last{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .chat-item .ci-time{font-size:10.5px;color:var(--muted-2);flex-shrink:0;align-self:flex-start}
-
 .chat-pane{display:flex;flex-direction:column;min-height:0;height:100%}
 .chat-head{
   display:flex;align-items:center;gap:12px;padding-bottom:14px;
@@ -392,7 +357,6 @@ input[type=range]{accent-color:var(--accent)}
 .chat-head .ch-main{flex:1;min-width:0}
 .chat-head .ch-name{font-weight:800;font-size:15px}
 .chat-head .ch-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
-
 .chat-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:9px;padding:4px 4px 14px}
 .msg{max-width:74%;display:flex;flex-direction:column;gap:3px}
 .msg.out{align-self:flex-end;align-items:flex-end}
@@ -413,7 +377,6 @@ input[type=range]{accent-color:var(--accent)}
 .msg-track .mt-main{min-width:0;flex:1}
 .msg-track .mt-title{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msg-track .mt-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
 .chat-input{display:flex;gap:9px;align-items:flex-end;padding-top:14px;border-top:1px solid var(--line);flex-shrink:0}
 .chat-input textarea{
   flex:1;background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;
@@ -422,7 +385,6 @@ input[type=range]{accent-color:var(--accent)}
 .chat-send{width:42px;height:42px;border-radius:50%;background:var(--accent);color:#04120a;display:grid;place-items:center;flex-shrink:0}
 .chat-send:disabled{opacity:.4}
 .chat-send svg{width:17px;height:17px}
-
 /* --------- player --------- */
 .player{
   grid-area:play;border-top:1px solid var(--line);background:var(--bg-2);
@@ -435,7 +397,6 @@ input[type=range]{accent-color:var(--accent)}
 .np-text{min-width:0}
 .np-title{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .np-sub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-
 .transport{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0;width:100%}
 .tcontrols{display:flex;align-items:center;gap:16px}
 .tcontrols button{color:var(--muted);display:grid;place-items:center;transition:color .13s}
@@ -445,11 +406,9 @@ input[type=range]{accent-color:var(--accent)}
 .play-btn{width:38px;height:38px;border-radius:50%;background:var(--text);color:var(--bg);flex-shrink:0}
 .play-btn:hover{transform:scale(1.05)}
 .play-btn svg{width:16px;height:16px}
-
 .seek{display:flex;align-items:center;gap:10px;width:100%;max-width:560px}
 .seek span{font-size:10.5px;color:var(--muted-2);width:34px;text-align:center;flex-shrink:0;font-variant-numeric:tabular-nums}
 .seek input{flex:1;min-width:0;height:4px}
-
 .pextra{display:flex;align-items:center;justify-content:flex-end;gap:12px;min-width:0}
 .pextra button{color:var(--muted);display:grid;place-items:center}
 .pextra button:hover{color:var(--text)}
@@ -457,7 +416,6 @@ input[type=range]{accent-color:var(--accent)}
 .pextra svg{width:16px;height:16px}
 .vol{display:flex;align-items:center;gap:8px;width:104px}
 .vol input{flex:1;min-width:0;height:4px}
-
 /* --------- modal --------- */
 .modal-back{
   position:fixed;inset:0;background:rgba(0,0,0,.66);backdrop-filter:blur(3px);
@@ -472,7 +430,6 @@ input[type=range]{accent-color:var(--accent)}
 .modal h3{font-size:19px;font-weight:900;margin-bottom:6px;letter-spacing:-.02em}
 .modal p.sub{color:var(--muted);font-size:13px;line-height:1.55;margin-bottom:20px}
 .modal-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
-
 /* --------- toast --------- */
 #toasts{position:fixed;right:20px;bottom:calc(var(--player) + 18px);z-index:500;display:flex;flex-direction:column;gap:9px;max-width:min(380px,84vw)}
 .toast{
@@ -483,7 +440,6 @@ input[type=range]{accent-color:var(--accent)}
 .toast.err{border-color:rgba(255,92,92,.45);background:#231518}
 .toast.ok{border-color:var(--accent-line)}
 @keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-
 /* --------- auth gate --------- */
 .gate{position:fixed;inset:0;background:var(--bg);z-index:600;display:grid;place-items:center;padding:24px}
 .gate-inner{text-align:center;max-width:390px}
@@ -497,9 +453,7 @@ input[type=range]{accent-color:var(--accent)}
 .gate-google:hover{background:#efefef}
 .gate-google svg{width:19px;height:19px}
 .gate-foot{margin-top:22px;font-size:11.5px;color:var(--muted-2);line-height:1.6}
-
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
-
 /* --------- responsive --------- */
 @media(max-width:1000px){
   .chat-layout{grid-template-columns:1fr}
@@ -537,7 +491,6 @@ input[type=range]{accent-color:var(--accent)}
 </style>
 </head>
 <body>
-
 <!-- ======================= AUTH GATE ======================= -->
 <div class="gate" id="gate">
   <div class="gate-inner">
@@ -551,17 +504,14 @@ input[type=range]{accent-color:var(--accent)}
     <div class="gate-foot" id="gateFoot">Your library, playlists and settings sync to your account automatically.</div>
   </div>
 </div>
-
 <!-- ======================= APP SHELL ======================= -->
 <div class="app hidden" id="app">
-
   <!-- ---------- sidebar ---------- -->
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">R</div>
       <div class="brand-word">RRJIFY</div>
     </div>
-
     <nav class="nav" id="navMain">
       <a class="nav-item" href="#/home" data-route="home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</a>
@@ -573,9 +523,7 @@ input[type=range]{accent-color:var(--accent)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12a8 8 0 01-8 8H7l-4 3V12a8 8 0 018-8h2a8 8 0 018 8z"/></svg>Messages
         <span class="count hidden" id="dmCount">0</span></a>
     </nav>
-
     <div class="side-divider"></div>
-
     <nav class="nav">
       <div class="nav-label">Create &amp; manage</div>
       <a class="nav-item" href="#/upload" data-route="upload">
@@ -588,29 +536,23 @@ input[type=range]{accent-color:var(--accent)}
       <a class="nav-item admin-only hidden" href="#/admin" data-route="admin">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>Admin</a>
     </nav>
-
     <div class="side-divider"></div>
-
     <nav class="nav" style="flex:1;min-height:0">
       <div class="nav-label">Playlists</div>
       <div id="sidePlaylists" style="overflow-y:auto"></div>
     </nav>
-
     <div class="side-foot" id="sideFoot"></div>
   </aside>
-
   <!-- ---------- header ---------- -->
   <header class="header">
     <div class="nav-arrows">
       <button id="backBtn" title="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <button id="fwdBtn" title="Forward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
     </div>
-
     <div class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       <input id="globalSearch" type="search" placeholder="Search tracks, artists and people">
     </div>
-
     <div class="head-right">
       <button class="icon-btn" id="djBtn" title="AGI DJ">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a4 4 0 014 4v5a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M19 11a7 7 0 01-14 0M12 18v3"/></svg>
@@ -624,10 +566,8 @@ input[type=range]{accent-color:var(--accent)}
       </button>
     </div>
   </header>
-
   <!-- ---------- routed view ---------- -->
   <main class="view" id="view"></main>
-
   <!-- ---------- player ---------- -->
   <footer class="player">
     <div class="np">
@@ -640,7 +580,6 @@ input[type=range]{accent-color:var(--accent)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 10-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 000-7.8z"/></svg>
       </button>
     </div>
-
     <div class="transport">
       <div class="tcontrols">
         <button id="shuffleBtn" title="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></button>
@@ -658,7 +597,6 @@ input[type=range]{accent-color:var(--accent)}
         <span id="tDur">0:00</span>
       </div>
     </div>
-
     <div class="pextra">
       <button id="dlBtn" title="Download for offline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/></svg></button>
       <button id="shareBtn" title="Send to a chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg></button>
@@ -668,7 +606,6 @@ input[type=range]{accent-color:var(--accent)}
       </div>
     </div>
   </footer>
-
   <!-- ---------- mobile nav ---------- -->
   <nav class="mobile-nav" id="mobileNav">
     <a href="#/home" data-route="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</a>
@@ -677,14 +614,10 @@ input[type=range]{accent-color:var(--accent)}
     <a href="#/messages" data-route="messages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12a8 8 0 01-8 8H7l-4 3V12a8 8 0 018-8h2a8 8 0 018 8z"/></svg>Chats</a>
     <a href="#/library" data-route="library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 3v18l8-5 8 5V3z"/></svg>Library</a>
   </nav>
-
 </div>
-
 <div id="toasts"></div>
 <div id="modalHost"></div>
-
 <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js"></script>
-
 <script type="module">
 /* ===========================================================================
    IMPORTS
@@ -703,7 +636,6 @@ import {
   getStorage, ref as sref, uploadBytes, uploadBytesResumable,
   getDownloadURL, deleteObject
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
 /* ===========================================================================
    CONFIG
    The apiKey is a public client identifier, not a secret. Real protection
@@ -718,17 +650,14 @@ const firebaseConfig = {
   appId: "1:1017097614834:web:9fbb71d9a3d1049a95276b",
   measurementId: "G-FEM226W8FL"
 };
-
 /* Admin accounts. Mirrored in the Firestore rules — the client copy only
    decides what UI to show; the rules are what actually enforce it. */
 const ADMIN_EMAILS = ["rajatrawat903@gmail.com"];
-
 const fbApp   = initializeApp(firebaseConfig);
 const auth    = getAuth(fbApp);
 const db      = getFirestore(fbApp);
 const storage = getStorage(fbApp);
 const gProvider = new GoogleAuthProvider();
-
 /* ===========================================================================
    GLOBAL STATE
    =========================================================================== */
@@ -737,7 +666,6 @@ const S = {
   isAdmin: false,
   profile: null,
   prefs: null,
-
   tracks: new Map(),        // id -> track (library + public + chat-shared)
   library: [],
   publicFeed: [],
@@ -746,19 +674,16 @@ const S = {
   playlists: [],
   chats: [],
   downloads: new Map(),     // trackId -> {meta, size}
-
   queue: [],
   queueIndex: -1,
   current: null,
   shuffle: false,
   repeat: "off",            // off | all | one
-
   route: { name: "home", param: null },
   searchActive: false,
   subs: [],                 // active onSnapshot unsubscribers
   viewSubs: []              // unsubscribers owned by the current view
 };
-
 const DEFAULT_PREFS = {
   theme: "dark",
   audioQuality: "auto",     // auto | data-saver | high | lossless
@@ -772,13 +697,11 @@ const DEFAULT_PREFS = {
   allowDMsFrom: "everyone", // everyone | following
   volume: 0.85
 };
-
 /* ===========================================================================
    SMALL UTILITIES
    =========================================================================== */
 const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
 function el(tag, attrs = {}, ...kids) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -796,11 +719,9 @@ function el(tag, attrs = {}, ...kids) {
   });
   return node;
 }
-
 const esc = (v) => String(v ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-
 function fmtTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
   const h = Math.floor(sec / 3600);
@@ -808,14 +729,12 @@ function fmtTime(sec) {
   const s = Math.floor(sec % 60).toString().padStart(2, "0");
   return h ? `${h}:${m.toString().padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
-
 function fmtBytes(n) {
   if (!n) return "0 B";
   const u = ["B", "KB", "MB", "GB"];
   const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
   return `${(n / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${u[i]}`;
 }
-
 function fmtWhen(ts) {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -826,17 +745,14 @@ function fmtWhen(ts) {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
-
 const initials = (name) => String(name || "?").trim().charAt(0).toUpperCase() || "?";
 const extOf = (n) => String(n).split(".").pop().toLowerCase();
-
 function debounce(fn, ms) {
   let t;
   const wrapped = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
   wrapped.flush = (...a) => { clearTimeout(t); fn(...a); };
   return wrapped;
 }
-
 function toast(msg, kind = "") {
   const node = el("div", { class: `toast ${kind}`, text: msg });
   $("#toasts").append(node);
@@ -846,7 +762,6 @@ function toast(msg, kind = "") {
     setTimeout(() => node.remove(), 220);
   }, kind === "err" ? 6500 : 3400);
 }
-
 /* Human-readable Firebase failures. Raw codes help nobody. */
 function explain(error) {
   const code = error?.code || "";
@@ -856,6 +771,9 @@ function explain(error) {
     "storage/quota-exceeded": "This project's storage quota is full.",
     "storage/unauthenticated": "You were signed out. Sign in and try again.",
     "storage/canceled": "Upload cancelled.",
+    "storage/retry-limit-exceeded": "The upload stopped responding. Check your connection, then retry the file.",
+    "storage/invalid-checksum": "The file changed while it was uploading. Choose the file again and retry.",
+    "storage/invalid-argument": "Firebase rejected this file's type or metadata. Try exporting it as MP3, WAV, or M4A.",
     "permission-denied": "Firestore rejected that. Paste the Firestore rules from the bottom of this file.",
     "failed-precondition": "Firestore needs a composite index — open the console and click the link it printed.",
     "unavailable": "Can't reach Firebase. Check your connection or an ad-blocker.",
@@ -869,12 +787,10 @@ function explain(error) {
   };
   return map[code] || error?.message || "Something went wrong.";
 }
-
 function confirmModal({ title, body, confirmText = "Confirm", danger = false }) {
   return new Promise((resolve) => {
     const back = el("div", { class: "modal-back" });
     const close = (v) => { back.remove(); resolve(v); };
-
     const modal = el("div", { class: "modal" },
       el("h3", { text: title }),
       el("p", { class: "sub", html: body }),
@@ -886,7 +802,6 @@ function confirmModal({ title, body, confirmText = "Confirm", danger = false }) 
         })
       )
     );
-
     back.append(modal);
     back.addEventListener("click", (e) => { if (e.target === back) close(false); });
     document.addEventListener("keydown", function onKey(e) {
@@ -896,7 +811,6 @@ function confirmModal({ title, body, confirmText = "Confirm", danger = false }) 
     modal.querySelector(".btn-primary,.btn-danger")?.focus();
   });
 }
-
 function openModal(builder) {
   const back = el("div", { class: "modal-back" });
   const close = () => back.remove();
@@ -907,7 +821,6 @@ function openModal(builder) {
   $("#modalHost").append(back);
   return close;
 }
-
 /* ===========================================================================
    OFFLINE STORE (IndexedDB)
    Downloaded audio lives here as Blobs so playback works with no network.
@@ -915,7 +828,6 @@ function openModal(builder) {
 const IDB = (() => {
   const NAME = "rrjify", VERSION = 1, STORE = "audio";
   let dbp = null;
-
   function open() {
     if (dbp) return dbp;
     dbp = new Promise((resolve, reject) => {
@@ -929,7 +841,6 @@ const IDB = (() => {
     });
     return dbp;
   }
-
   const tx = async (mode, fn) => {
     const d = await open();
     return new Promise((resolve, reject) => {
@@ -941,7 +852,6 @@ const IDB = (() => {
       t.onabort = () => reject(t.error);
     });
   };
-
   return {
     put: (rec) => tx("readwrite", (s) => s.put(rec)),
     get: (id) => tx("readonly", (s) => s.get(id)),
@@ -950,7 +860,6 @@ const IDB = (() => {
     clear: () => tx("readwrite", (s) => s.clear())
   };
 })();
-
 async function loadDownloads() {
   try {
     const rows = await IDB.all();
@@ -961,14 +870,12 @@ async function loadDownloads() {
     console.warn("IndexedDB unavailable:", e);
   }
 }
-
 function updateDownloadBadge() {
   const n = S.downloads.size;
   const badge = $("#dlCount");
   badge.textContent = n;
   badge.classList.toggle("hidden", n === 0);
 }
-
 /* ===========================================================================
    AUTH
    =========================================================================== */
@@ -984,13 +891,10 @@ $("#gateSignIn").addEventListener("click", async (e) => {
     btn.disabled = false;
   }
 });
-
 onAuthStateChanged(auth, async (user) => {
   teardownSubs();
-
   S.user = user;
   S.isAdmin = !!user && ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-
   if (!user) {
     $("#gate").classList.remove("hidden");
     $("#app").classList.add("hidden");
@@ -998,29 +902,23 @@ onAuthStateChanged(auth, async (user) => {
     S.liked.clear(); S.following.clear(); S.playlists = []; S.chats = [];
     return;
   }
-
   $("#gate").classList.add("hidden");
   $("#app").classList.remove("hidden");
-
   // Header identity
   const av = $("#meAvatar");
   av.innerHTML = user.photoURL
     ? `<img src="${esc(user.photoURL)}" alt="">`
     : esc(initials(user.displayName || user.email));
-
   $$(".admin-only").forEach(n => n.classList.toggle("hidden", !S.isAdmin));
   $("#sideFoot").innerHTML = S.isAdmin
     ? `Signed in as <b>${esc(user.displayName || user.email)}</b> <span class="admin-chip">ADMIN</span>`
     : `Signed in as <b>${esc(user.displayName || user.email)}</b>`;
-
   await ensureProfile(user);
   await loadPrefs(user.uid);
   await loadDownloads();
-
   subscribeAll(user.uid);
   router();
 });
-
 function teardownSubs() {
   S.subs.forEach(fn => { try { fn(); } catch {} });
   S.subs = [];
@@ -1030,7 +928,6 @@ function teardownViewSubs() {
   S.viewSubs.forEach(fn => { try { fn(); } catch {} });
   S.viewSubs = [];
 }
-
 async function ensureProfile(user) {
   const ref = doc(db, "users", user.uid);
   try {
@@ -1063,7 +960,6 @@ async function ensureProfile(user) {
     S.profile = { displayName: user.displayName, photoURL: user.photoURL };
   }
 }
-
 /* ===========================================================================
    PREFERENCES — autosaved, debounced (the "saves like Instagram" behaviour)
    =========================================================================== */
@@ -1076,7 +972,6 @@ async function loadPrefs(uid) {
   }
   applyPrefs();
 }
-
 const savePrefs = debounce(async () => {
   if (!S.user) return;
   try {
@@ -1087,13 +982,11 @@ const savePrefs = debounce(async () => {
     console.warn("prefs save:", err);
   }
 }, 700);
-
 function setPref(key, value) {
   S.prefs[key] = value;
   applyPrefs();
   savePrefs();
 }
-
 function applyPrefs() {
   document.documentElement.dataset.theme = S.prefs.theme === "light" ? "light" : "dark";
   // `audio` is defined further down the module. Guard with typeof so this is
@@ -1103,24 +996,20 @@ function applyPrefs() {
   const v = $("#vol"); if (v) v.value = audio.volume;
   audio.preload = S.prefs.audioQuality === "data-saver" ? "none" : "metadata";
 }
-
 // Flush any pending preference write if the tab is closing.
 window.addEventListener("beforeunload", () => { try { savePrefs.flush(); } catch {} });
-
 /* ===========================================================================
    AUDIO ENGINE
    =========================================================================== */
 const audio = new Audio();
 audio.preload = "metadata";
 audio.volume = DEFAULT_PREFS.volume;
-
 // Blob URLs minted for offline playback — revoked when we move on so the
 // tab doesn't leak memory across a long listening session.
 let activeObjectUrl = null;
 function releaseObjectUrl() {
   if (activeObjectUrl) { URL.revokeObjectURL(activeObjectUrl); activeObjectUrl = null; }
 }
-
 /**
  * Resolve the best source for a track:
  *   1. an offline copy in IndexedDB (instant, works with no network)
@@ -1137,17 +1026,14 @@ async function resolveSource(track) {
   } catch {}
   return { url: track.audioUrl, offline: false };
 }
-
 async function playTrack(track, contextQueue = null) {
   if (!track) return;
   if (!track.audioUrl && !S.downloads.has(track.id)) {
     toast("That track is still uploading.", "err");
     return;
   }
-
   S.tracks.set(track.id, { ...S.tracks.get(track.id), ...track });
   S.current = track;
-
   if (Array.isArray(contextQueue) && contextQueue.length) {
     S.queue = contextQueue;
     S.queueIndex = Math.max(0, contextQueue.findIndex(t => t.id === track.id));
@@ -1155,9 +1041,7 @@ async function playTrack(track, contextQueue = null) {
     S.queue = [track];
     S.queueIndex = 0;
   }
-
   renderNowPlaying(track);
-
   try {
     const { url, offline } = await resolveSource(track);
     if (!url) throw new Error("No playable source");
@@ -1172,18 +1056,14 @@ async function playTrack(track, contextQueue = null) {
     else toast("Couldn't play that track.", "err");
   }
 }
-
 function togglePlay() {
   if (!S.current) { toast("Pick a track first."); return; }
   if (audio.paused) audio.play().catch(() => toast("Press play again.", "err"));
   else audio.pause();
 }
-
 function playNext(auto = false) {
   if (!S.queue.length) return;
-
   if (S.repeat === "one" && auto) { audio.currentTime = 0; audio.play().catch(() => {}); return; }
-
   if (S.shuffle && S.queue.length > 1) {
     let n; do { n = Math.floor(Math.random() * S.queue.length); } while (n === S.queueIndex);
     S.queueIndex = n;
@@ -1195,18 +1075,15 @@ function playNext(auto = false) {
     audio.pause();
     return;
   }
-
   if (auto && !S.prefs?.autoplayNext) { audio.pause(); return; }
   playTrack(S.queue[S.queueIndex], S.queue);
 }
-
 function playPrev() {
   if (!S.queue.length) return;
   if (audio.currentTime > 5) { audio.currentTime = 0; return; }
   S.queueIndex = S.queueIndex <= 0 ? S.queue.length - 1 : S.queueIndex - 1;
   playTrack(S.queue[S.queueIndex], S.queue);
 }
-
 function renderNowPlaying(track) {
   $("#npTitle").textContent = track.title || "Untitled";
   $("#npSub").textContent = track.artist || "Unknown artist";
@@ -1216,13 +1093,11 @@ function renderNowPlaying(track) {
   $("#dlBtn").classList.toggle("on", S.downloads.has(track.id));
   markPlayingRows();
 }
-
 function markPlayingRows() {
   $$(".tcard, .trow").forEach(n => {
     n.classList.toggle("playing", !!S.current && n.dataset.trackId === S.current.id);
   });
 }
-
 audio.addEventListener("loadedmetadata", () => {
   $("#tDur").textContent = fmtTime(audio.duration);
   $("#seek").max = Number.isFinite(audio.duration) ? audio.duration : 0;
@@ -1239,7 +1114,6 @@ audio.addEventListener("error", () => {
   console.error("AUDIO:", audio.error, audio.currentSrc);
   toast("That file couldn't be played. FLAC won't decode in Safari.", "err");
 });
-
 $("#playBtn").addEventListener("click", togglePlay);
 $("#nextBtn").addEventListener("click", () => playNext(false));
 $("#prevBtn").addEventListener("click", playPrev);
@@ -1268,7 +1142,6 @@ $("#repeatBtn").addEventListener("click", (e) => {
 $("#npLike").addEventListener("click", () => S.current && toggleLike(S.current));
 $("#dlBtn").addEventListener("click", () => S.current && toggleDownload(S.current));
 $("#shareBtn").addEventListener("click", () => S.current && openShareModal(S.current));
-
 /* Media Session — lock-screen and headset controls. */
 if ("mediaSession" in navigator) {
   navigator.mediaSession.setActionHandler("play", () => audio.play());
@@ -1285,7 +1158,6 @@ audio.addEventListener("loadedmetadata", () => {
     artwork: S.current.albumArtUrl ? [{ src: S.current.albumArtUrl, sizes: "512x512" }] : []
   });
 });
-
 async function logPlay(track) {
   if (!S.user) return;
   try {
@@ -1295,7 +1167,6 @@ async function logPlay(track) {
     });
   } catch {}
 }
-
 /* Keyboard shortcuts */
 document.addEventListener("keydown", (e) => {
   const tag = document.activeElement?.tagName;
@@ -1305,7 +1176,6 @@ document.addEventListener("keydown", (e) => {
   else if (e.code === "ArrowLeft"  && S.current) audio.currentTime = Math.max(audio.currentTime - 5, 0);
   else if (e.key === "/") { e.preventDefault(); $("#globalSearch").focus(); }
 });
-
 /* ===========================================================================
    REALTIME SUBSCRIPTIONS
    =========================================================================== */
@@ -1326,7 +1196,6 @@ function subscribeAll(uid) {
     },
     (err) => { console.error("library:", err); toast(explain(err), "err"); }
   ));
-
   // --- public catalogue
   S.subs.push(onSnapshot(
     query(collection(db, "tracks"), where("public", "==", true), orderBy("createdAt", "desc"), limit(60)),
@@ -1345,7 +1214,6 @@ function subscribeAll(uid) {
       }
     }
   ));
-
   // --- liked
   S.subs.push(onSnapshot(collection(db, "users", uid, "liked"), (snap) => {
     S.liked = new Set(snap.docs.map(d => d.id));
@@ -1358,20 +1226,17 @@ function subscribeAll(uid) {
     $$(".js-like").forEach(b => b.classList.toggle("on", S.liked.has(b.dataset.trackId)));
     if (S.route.name === "library") router();
   }));
-
   // --- following
   S.subs.push(onSnapshot(collection(db, "users", uid, "following"), (snap) => {
     S.following = new Set(snap.docs.map(d => d.id));
     $$(".js-follow").forEach(b => syncFollowBtn(b, S.following.has(b.dataset.uid)));
     if (["home", "profile"].includes(S.route.name)) router();
   }));
-
   // --- playlists
   S.subs.push(onSnapshot(
     query(collection(db, "users", uid, "playlists"), orderBy("createdAt", "desc")),
     (snap) => { S.playlists = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderSidePlaylists(); }
   ));
-
   // --- chats
   S.subs.push(onSnapshot(
     query(collection(db, "chats"), where("memberIds", "array-contains", uid), orderBy("lastMessageAt", "desc"), limit(50)),
@@ -1392,7 +1257,6 @@ function subscribeAll(uid) {
     }
   ));
 }
-
 function renderSidePlaylists() {
   const host = $("#sidePlaylists");
   host.innerHTML = "";
@@ -1407,7 +1271,6 @@ function renderSidePlaylists() {
     }));
   });
 }
-
 /* ===========================================================================
    LIKES
    =========================================================================== */
@@ -1426,7 +1289,6 @@ async function toggleLike(track) {
     }
   } catch (err) { toast(explain(err), "err"); }
 }
-
 /* ===========================================================================
    FOLLOW GRAPH
    Writes both sides plus denormalised counters in one batch, so a partial
@@ -1437,17 +1299,14 @@ function syncFollowBtn(btn, isFollowing) {
   btn.classList.toggle("btn-primary", !isFollowing);
   btn.classList.toggle("btn-ghost", isFollowing);
 }
-
 async function toggleFollow(targetUid, targetProfile = {}) {
   if (!S.user || targetUid === S.user.uid) return;
   const me = S.user.uid;
   const isFollowing = S.following.has(targetUid);
-
   try {
     const batch = writeBatch(db);
     const mine   = doc(db, "users", me, "following", targetUid);
     const theirs = doc(db, "users", targetUid, "followers", me);
-
     if (isFollowing) {
       batch.delete(mine);
       batch.delete(theirs);
@@ -1474,7 +1333,6 @@ async function toggleFollow(targetUid, targetProfile = {}) {
     toast(explain(err), "err");
   }
 }
-
 /* ===========================================================================
    DOWNLOADS (offline)
    Fetches the audio once and keeps the Blob in IndexedDB.
@@ -1489,15 +1347,12 @@ async function toggleDownload(track) {
     $("#dlBtn").classList.toggle("on", false);
     return;
   }
-
   if (!track.audioUrl) { toast("Nothing to download yet.", "err"); return; }
-
   toast(`Downloading "${track.title}"…`);
   try {
     const res = await fetch(track.audioUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
-
     const meta = {
       id: track.id, title: track.title || "Untitled", artist: track.artist || "Unknown artist",
       albumArtUrl: track.albumArtUrl || null, durationSec: track.durationSec || null,
@@ -1514,7 +1369,6 @@ async function toggleDownload(track) {
     toast("Download failed. Storage CORS may be blocking it — see the notes at the bottom of this file.", "err");
   }
 }
-
 /** Save a copy to the user's device (the normal "download file" action). */
 async function saveToDevice(track) {
   try {
@@ -1534,7 +1388,6 @@ async function saveToDevice(track) {
     toast("Couldn't save the file.", "err");
   }
 }
-
 /* ===========================================================================
    SHARED COMPONENTS
    =========================================================================== */
@@ -1544,12 +1397,10 @@ function avatarNode(size, name, photoURL) {
     html: photoURL ? `<img src="${esc(photoURL)}" alt="" loading="lazy">` : esc(initials(name))
   });
 }
-
 function trackCard(track, opts = {}) {
   const own = track.ownerId === S.user?.uid;
   const liked = S.liked.has(track.id);
   const offline = S.downloads.has(track.id);
-
   const tags = [];
   if (track.genre) tags.push(el("span", { class: "tag", text: track.genre }));
   if (track.durationSec) tags.push(el("span", { class: "tag", text: fmtTime(track.durationSec) }));
@@ -1559,7 +1410,6 @@ function trackCard(track, opts = {}) {
       ? el("span", { class: "tag warn", text: "Syncing" })
       : el("span", { class: `tag ${track.public ? "accent" : ""}`, text: track.public ? "Public" : "Private" }));
   }
-
   const actions = [];
   actions.push(el("button", {
     class: `mini-btn js-like ${liked ? "on" : ""}`,
@@ -1589,7 +1439,6 @@ function trackCard(track, opts = {}) {
       onclick: (e) => { e.stopPropagation(); adminRemoveTrack(track); }
     }));
   }
-
   const card = el("div", {
     class: `tcard ${S.current?.id === track.id ? "playing" : ""}`,
     dataset: { trackId: track.id },
@@ -1612,14 +1461,11 @@ function trackCard(track, opts = {}) {
     el("div", { class: "tcard-tags" }, tags),
     el("div", { class: "tcard-actions" }, actions)
   );
-
   return card;
 }
-
 function trackRow(track, index, opts = {}) {
   const liked = S.liked.has(track.id);
   const offline = S.downloads.has(track.id);
-
   return el("div", {
     class: `trow ${S.current?.id === track.id ? "playing" : ""}`,
     dataset: { trackId: track.id },
@@ -1652,13 +1498,11 @@ function trackRow(track, index, opts = {}) {
     el("div", { class: "trow-time", text: track.durationSec ? fmtTime(track.durationSec) : "--:--" })
   );
 }
-
 function emptyState(title, body, action) {
   const node = el("div", { class: "empty" }, el("strong", { text: title }), body);
   if (action) node.append(el("a", { class: "btn btn-primary", href: action.href, text: action.label }));
   return node;
 }
-
 function sectionBlock(title, note, content) {
   return el("section", { class: "section" },
     el("div", { class: "section-head" },
@@ -1668,7 +1512,6 @@ function sectionBlock(title, note, content) {
     content
   );
 }
-
 /* ===========================================================================
    METADATA EXTRACTION
    Runs the moment a file is chosen so the upload never waits on it.
@@ -1678,7 +1521,6 @@ function readMetadata(file) {
     const meta = { title: null, artist: null, album: null, year: null, genre: null, coverDataUrl: null, durationSec: null };
     let settled = false;
     const done = () => { if (!settled) { settled = true; resolve(meta); } };
-
     const objUrl = URL.createObjectURL(file);
     const probe = new Audio();
     probe.preload = "metadata";
@@ -1688,9 +1530,7 @@ function readMetadata(file) {
       URL.revokeObjectURL(objUrl);
     });
     probe.addEventListener("error", () => URL.revokeObjectURL(objUrl));
-
     if (!window.jsmediatags) { setTimeout(done, 300); return; }
-
     window.jsmediatags.read(file, {
       onSuccess: (tag) => {
         const t = tag.tags || {};
@@ -1714,11 +1554,9 @@ function readMetadata(file) {
       },
       onError: () => setTimeout(done, 180)
     });
-
     setTimeout(done, 1500);   // hard cap so nothing ever hangs
   });
 }
-
 function dataUrlToBlob(dataUrl) {
   const [head, b64] = dataUrl.split(",");
   const mime = head.match(/:(.*?);/)[1];
@@ -1727,7 +1565,6 @@ function dataUrlToBlob(dataUrl) {
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   return new Blob([arr], { type: mime });
 }
-
 /* ===========================================================================
    UPLOAD PIPELINE
    Parallelised: bytes start immediately, the Firestore document is written
@@ -1736,46 +1573,38 @@ function dataUrlToBlob(dataUrl) {
 const ALLOWED = ["mp3", "wav", "flac", "m4a", "ogg"];
 const MAX_BYTES = 200 * 1024 * 1024;
 const SMALL_FILE = 5 * 1024 * 1024;
-
+const UPLOAD_STALL_MS = 90_000;
 const uploadJobs = new Map();   // jobId -> {file, meta, state, pct, node}
-
 function validateFile(file) {
   if (!ALLOWED.includes(extOf(file.name))) return `"${file.name}" isn't a supported audio format.`;
   if (file.size > MAX_BYTES) return `"${file.name}" is over ${fmtBytes(MAX_BYTES)}.`;
   if (file.size === 0) return `"${file.name}" is empty.`;
   return null;
 }
-
 async function queueUpload(file, options = {}) {
   const problem = validateFile(file);
   if (problem) { toast(problem, "err"); return; }
   if (!S.user) { toast("Sign in first.", "err"); return; }
-
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const job = { id: jobId, file, state: "reading", pct: 0, error: null };
   uploadJobs.set(jobId, job);
   renderUploadQueue();
-
   // Start tag reading immediately; the transfer will not wait on it.
   const metaPromise = readMetadata(file);
-
   const trackRef = doc(collection(db, "users", S.user.uid, "tracks"));
   const trackId = trackRef.id;
   const ext = extOf(file.name);
   const path = `users/${S.user.uid}/tracks/${trackId}.${ext}`;
   const fileRef = sref(storage, path);
-
   try {
     /* --- 1. bytes first --- */
     job.state = "uploading";
     renderUploadQueue();
-
     const uploadMeta = {
       contentType: file.type || `audio/${ext}`,
       cacheControl: "public,max-age=31536000,immutable",
       customMetadata: { ownerId: S.user.uid, trackId }
     };
-
     let audioPromise;
     if (file.size <= SMALL_FILE) {
       // One request. Resumable adds a session handshake that dominates the
@@ -1790,11 +1619,37 @@ async function queueUpload(file, options = {}) {
       });
       audioPromise = task;
     }
-
+    // Use a resumable task for every audio file. The previous one-shot path
+    // left small uploads visually stuck at 40% and gave no progress/error
+    // signal until the request eventually returned.
+    const task = uploadBytesResumable(fileRef, file, uploadMeta);
+    job.task = task;
+    let stallTimer;
+    const resetStallTimer = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => task.cancel(), UPLOAD_STALL_MS);
+    };
+    resetStallTimer();
+    const audioPromise = new Promise((resolve, reject) => {
+      task.on("state_changed",
+        (snap) => {
+          resetStallTimer();
+          job.pct = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
+          renderUploadQueue();
+        },
+        (error) => {
+          clearTimeout(stallTimer);
+          reject(error);
+        },
+        () => {
+          clearTimeout(stallTimer);
+          resolve(task.snapshot);
+        }
+      );
+    });
     /* --- 2. document written in parallel --- */
     const meta = await metaPromise;
     const fallbackTitle = file.name.replace(/\.[^/.]+$/, "");
-
     const payload = {
       title: options.title || meta.title || fallbackTitle,
       artist: options.artist || meta.artist || S.profile?.displayName || S.user.displayName || "Unknown artist",
@@ -1819,9 +1674,7 @@ async function queueUpload(file, options = {}) {
       audioUrl: "",
       createdAt: serverTimestamp()
     };
-
     const docPromise = setDoc(trackRef, payload);
-
     /* --- 3. cover art concurrently --- */
     let coverPromise = Promise.resolve(null);
     if (meta.coverDataUrl) {
@@ -1830,53 +1683,45 @@ async function queueUpload(file, options = {}) {
         contentType: "image/jpeg", cacheControl: "public,max-age=31536000,immutable"
       }).then(() => getDownloadURL(artRef)).catch((e) => { console.warn("cover:", e); return null; });
     }
-
     await Promise.all([audioPromise, docPromise]);
     job.pct = 100; job.state = "finishing"; renderUploadQueue();
-
     const [audioUrl, albumArtUrl] = await Promise.all([getDownloadURL(fileRef), coverPromise]);
     await updateDoc(trackRef, { audioUrl, albumArtUrl, status: "ready" });
-
     job.state = "done";
     renderUploadQueue();
     toast(`"${payload.title}" is in your library.`, "ok");
-
     // bump the profile counter (best effort — never blocks the upload)
     updateDoc(doc(db, "users", S.user.uid), { trackCount: increment(1) }).catch(() => {});
-
     if (options.publishNow) {
       const full = { id: trackId, ...payload, audioUrl, albumArtUrl, public: false };
       await togglePublish(full, { skipConfirm: true });
     }
-
     setTimeout(() => { uploadJobs.delete(jobId); renderUploadQueue(); }, 4000);
-
   } catch (err) {
     console.error("UPLOAD FAILED:", err?.code, err?.message, err);
     job.state = "error";
     job.error = explain(err);
+    job.error = err?.code === "storage/canceled" && job.pct < 100
+      ? "No upload progress for 90 seconds. Check your connection and retry."
+      : explain(err);
     renderUploadQueue();
     toast(job.error, "err");
     deleteDoc(trackRef).catch(() => {});
   }
 }
-
 function renderUploadQueue() {
   const host = $("#uploadQueue");
   if (!host) return;
   host.innerHTML = "";
-
   if (!uploadJobs.size) {
     host.append(el("div", { class: "section-note", text: "No uploads in progress." }));
     return;
   }
-
   uploadJobs.forEach((job) => {
     const label = {
       reading: "Reading tags…", uploading: `Uploading ${Math.round(job.pct)}%`,
       finishing: "Finalising…", done: "Complete", error: job.error || "Failed"
     }[job.state] || job.state;
-
     host.append(el("div", { class: "queue-item" },
       el("div", { class: "avatar sm", html: "♪" }),
       el("div", { class: "qi-main" },
@@ -1888,7 +1733,6 @@ function renderUploadQueue() {
     ));
   });
 }
-
 /* ===========================================================================
    PUBLISHING
    A published track is mirrored into the root `tracks` collection. The
@@ -1897,9 +1741,7 @@ function renderUploadQueue() {
 async function togglePublish(track, opts = {}) {
   if (!S.user || track.ownerId !== S.user.uid) return;
   if (track.status === "uploading") { toast("Wait for the upload to finish.", "err"); return; }
-
   const goPublic = !track.public;
-
   if (goPublic && !opts.skipConfirm) {
     const ok = await confirmModal({
       title: "Publish to Explore?",
@@ -1910,11 +1752,9 @@ async function togglePublish(track, opts = {}) {
     });
     if (!ok) return;
   }
-
   try {
     const publicRef = doc(db, "tracks", track.id);
     await updateDoc(doc(db, "users", S.user.uid, "tracks", track.id), { public: goPublic });
-
     if (goPublic) {
       await setDoc(publicRef, {
         title: track.title, artist: track.artist, album: track.album ?? null,
@@ -1938,7 +1778,6 @@ async function togglePublish(track, opts = {}) {
     toast(explain(err), "err");
   }
 }
-
 /* ===========================================================================
    ADMIN MODERATION
    =========================================================================== */
@@ -1951,13 +1790,11 @@ async function adminRemoveTrack(track) {
     confirmText: "Remove", danger: true
   });
   if (!ok) return;
-
   try {
     await deleteDoc(doc(db, "tracks", track.id));
     toast("Removed from Explore.");
   } catch (err) { toast(explain(err), "err"); }
 }
-
 /* Admin-only, privacy-conscious overview. The dashboard shows conversation
    activity and the latest chat preview; it intentionally does not copy or
    export message history. Full access remains protected by the Firestore
@@ -1991,7 +1828,6 @@ async function loadAdminChatActivity(host) {
     host.replaceChildren(el("div", { class: "section-note", text: explain(err) }));
   }
 }
-
 async function deleteOwnTrack(track) {
   if (!S.user || track.ownerId !== S.user.uid) return;
   const ok = await confirmModal({
@@ -2000,7 +1836,6 @@ async function deleteOwnTrack(track) {
     confirmText: "Delete", danger: true
   });
   if (!ok) return;
-
   try {
     if (track.public) await deleteDoc(doc(db, "tracks", track.id)).catch(() => {});
     await deleteDoc(doc(db, "users", S.user.uid, "tracks", track.id));
@@ -2012,24 +1847,19 @@ async function deleteOwnTrack(track) {
     toast("Track deleted.");
   } catch (err) { toast(explain(err), "err"); }
 }
-
 /* ===========================================================================
    MESSAGING
    chats/{id}      {memberIds[], members{}, isGroup, name, lastMessage, ...}
    chats/{id}/messages/{id}
-
    A one-to-one chat uses a deterministic id built from both uids, so two
    people opening a DM at the same time land in the same document instead of
    creating duplicates.
    =========================================================================== */
 function dmId(a, b) { return [a, b].sort().join("__"); }
-
 async function openDirectChat(otherUid, otherProfile = {}) {
   if (!S.user || otherUid === S.user.uid) return null;
-
   const id = dmId(S.user.uid, otherUid);
   const ref = doc(db, "chats", id);
-
   try {
     const snap = await getDoc(ref);
     if (!snap.exists()) {
@@ -2062,12 +1892,10 @@ async function openDirectChat(otherUid, otherProfile = {}) {
     return null;
   }
 }
-
 async function createGroupChat(name, memberUids, memberProfiles = {}) {
   if (!S.user) return null;
   const ids = Array.from(new Set([S.user.uid, ...memberUids]));
   if (ids.length < 3) { toast("Pick at least two people for a group.", "err"); return null; }
-
   const members = {
     [S.user.uid]: {
       displayName: S.profile?.displayName || S.user.displayName || "User",
@@ -2080,7 +1908,6 @@ async function createGroupChat(name, memberUids, memberProfiles = {}) {
       photoURL: memberProfiles[uid]?.photoURL || null
     };
   });
-
   try {
     const ref = await addDoc(collection(db, "chats"), {
       isGroup: true,
@@ -2102,10 +1929,8 @@ async function createGroupChat(name, memberUids, memberProfiles = {}) {
     return null;
   }
 }
-
 async function sendMessage(chatId, payload) {
   if (!S.user || !chatId) return;
-
   const body = {
     senderId: S.user.uid,
     senderName: S.profile?.displayName || S.user.displayName || "User",
@@ -2115,7 +1940,6 @@ async function sendMessage(chatId, payload) {
     track: payload.track || null,
     createdAt: serverTimestamp()
   };
-
   try {
     await addDoc(collection(db, "chats", chatId, "messages"), body);
     await updateDoc(doc(db, "chats", chatId), {
@@ -2129,14 +1953,12 @@ async function sendMessage(chatId, payload) {
     toast(explain(err), "err");
   }
 }
-
 async function markChatRead(chatId) {
   if (!S.user || !chatId) return;
   try {
     await updateDoc(doc(db, "chats", chatId), { readBy: arrayUnion(S.user.uid) });
   } catch {}
 }
-
 async function leaveChat(chat) {
   if (!S.user) return;
   const ok = await confirmModal({
@@ -2147,7 +1969,6 @@ async function leaveChat(chat) {
     confirmText: chat.isGroup ? "Leave" : "Delete", danger: true
   });
   if (!ok) return;
-
   try {
     await updateDoc(doc(db, "chats", chat.id), {
       memberIds: arrayRemove(S.user.uid)
@@ -2156,19 +1977,16 @@ async function leaveChat(chat) {
     toast(chat.isGroup ? "Left the group." : "Conversation removed.");
   } catch (err) { toast(explain(err), "err"); }
 }
-
 /* --------------------------------------------------------------------------
    SHARE A TRACK INTO A CHAT
    -------------------------------------------------------------------------- */
 function openShareModal(track) {
   if (!S.user) return;
-
   openModal((modal, close) => {
     modal.append(
       el("h3", { text: "Send this track" }),
       el("p", { class: "sub", text: `${track.title || "Untitled"} — ${track.artist || "Unknown artist"}` })
     );
-
     if (!S.chats.length) {
       modal.append(emptyState(
         "No conversations yet",
@@ -2203,13 +2021,11 @@ function openShareModal(track) {
       });
       modal.append(list);
     }
-
     modal.append(el("div", { class: "modal-actions" },
       el("button", { class: "btn btn-ghost", text: "Close", onclick: close })
     ));
   });
 }
-
 /** Work out the display name/photo for a chat from the current user's side. */
 function chatLabel(chat) {
   if (chat.isGroup) return { name: chat.name || "Group", photo: null };
@@ -2217,7 +2033,6 @@ function chatLabel(chat) {
   const info = chat.members?.[otherUid] || {};
   return { name: info.displayName || "Conversation", photo: info.photoURL || null, uid: otherUid };
 }
-
 /* --------------------------------------------------------------------------
    USER DISCOVERY
    -------------------------------------------------------------------------- */
@@ -2240,22 +2055,18 @@ async function searchUsers(term) {
     return [];
   }
 }
-
 async function fetchProfile(uid) {
   try {
     const snap = await getDoc(doc(db, "users", uid));
     return snap.exists() ? { uid, ...snap.data() } : null;
   } catch { return null; }
 }
-
 function openNewChatModal() {
   openModal((modal, close) => {
     const picked = new Map();
-
     const results = el("div", { style: "max-height:260px;overflow-y:auto;margin-top:10px" });
     const chosen = el("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:12px" });
     const nameField = el("input", { class: "input", placeholder: "Group name (optional)" });
-
     const redrawChosen = () => {
       chosen.innerHTML = "";
       picked.forEach((p, uid) => {
@@ -2267,7 +2078,6 @@ function openNewChatModal() {
       startBtn.textContent = picked.size > 1 ? `Create group (${picked.size})` : "Start chat";
       startBtn.disabled = picked.size === 0;
     };
-
     const search = el("input", {
       class: "input", placeholder: "Search by username",
       oninput: debounce(async (e) => {
@@ -2293,7 +2103,6 @@ function openNewChatModal() {
         });
       }, 320)
     });
-
     const startBtn = el("button", {
       class: "btn btn-primary", text: "Start chat", disabled: true,
       onclick: async () => {
@@ -2304,7 +2113,6 @@ function openNewChatModal() {
         else await createGroupChat(nameField.value.trim() || "New group", uids, profiles);
       }
     });
-
     modal.append(
       el("h3", { text: "New conversation" }),
       el("p", { class: "sub", text: "Search for someone by username. Add two or more people to make a group." }),
@@ -2317,7 +2125,6 @@ function openNewChatModal() {
     );
   });
 }
-
 /* ===========================================================================
    ROUTER
    =========================================================================== */
@@ -2326,36 +2133,28 @@ const ROUTES = {
   upload: viewUpload, downloads: viewDownloads, messages: viewMessages,
   chat: viewChat, profile: viewProfile, settings: viewSettings, admin: viewAdmin
 };
-
 function parseHash() {
   const raw = (location.hash || "#/home").replace(/^#\/?/, "");
   const [name, param] = raw.split("/");
   return { name: ROUTES[name] ? name : "home", param: param || null };
 }
-
 function router() {
   if (!S.user) return;
-
   if (S.searchActive) {
     S.searchActive = false;
     const box = $("#globalSearch");
     if (box) box.value = "";
   }
-
   teardownViewSubs();
   S.route = parseHash();
-
   if (S.route.name === "admin" && !S.isAdmin) {
     location.hash = "#/home";
     return;
   }
-
   $$("[data-route]").forEach(n => n.classList.toggle("active", n.dataset.route === S.route.name));
-
   const host = $("#view");
   host.innerHTML = "";
   host.scrollTop = 0;
-
   try {
     ROUTES[S.route.name](host, S.route.param);
   } catch (err) {
@@ -2363,14 +2162,12 @@ function router() {
     host.append(emptyState("This page failed to render", "The error is in the console. Try reloading."));
   }
 }
-
 window.addEventListener("hashchange", router);
 $("#backBtn").addEventListener("click", () => history.back());
 $("#fwdBtn").addEventListener("click", () => history.forward());
 $("#msgBtn").addEventListener("click", () => { location.hash = "#/messages"; });
 $("#meBtn").addEventListener("click", () => { if (S.user) location.hash = `#/profile/${S.user.uid}`; });
 $("#djBtn").addEventListener("click", openDjModal);
-
 /* ===========================================================================
    VIEW · HOME
    =========================================================================== */
@@ -2378,12 +2175,10 @@ function viewHome(host) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const firstName = (S.profile?.displayName || S.user.displayName || "there").split(" ")[0];
-
   host.append(el("div", { class: "view-head" },
     el("div", { class: "view-title", text: `${greeting}, ${firstName}` }),
     el("div", { class: "view-sub", text: "Everything you save, like or follow syncs to your account automatically." })
   ));
-
   // Quick stats
   host.append(el("div", { class: "stats", style: "margin-bottom:34px" },
     stat(S.library.length, "Tracks uploaded"),
@@ -2391,7 +2186,6 @@ function viewHome(host) {
     stat(S.following.size, "Following"),
     stat(S.downloads.size, "Offline")
   ));
-
   // Recently added to your library
   if (S.library.length) {
     const grid = el("div", { class: "grid" });
@@ -2404,7 +2198,6 @@ function viewHome(host) {
       { href: "#/upload", label: "Upload a track" }
     )));
   }
-
   // From people you follow
   const followed = S.publicFeed.filter(t => S.following.has(t.ownerId));
   if (followed.length) {
@@ -2412,7 +2205,6 @@ function viewHome(host) {
     followed.slice(0, 10).forEach(t => grid.append(trackCard(t, { context: () => followed })));
     host.append(sectionBlock("From artists you follow", null, grid));
   }
-
   // Fresh on RRJIFY
   if (S.publicFeed.length) {
     const grid = el("div", { class: "grid" });
@@ -2420,11 +2212,9 @@ function viewHome(host) {
     host.append(sectionBlock("New on RRJIFY", "Published by the community", grid));
   }
 }
-
 function stat(value, label) {
   return el("div", { class: "stat" }, el("b", { text: String(value) }), el("span", { text: label }));
 }
-
 /* ===========================================================================
    VIEW · EXPLORE
    =========================================================================== */
@@ -2433,13 +2223,10 @@ function viewExplore(host) {
     el("div", { class: "view-title", text: "Explore" }),
     el("div", { class: "view-sub", text: "Everything the community has published. Stream it, save it offline, or send it to a friend." })
   ));
-
   const filterRow = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px" });
   const genres = Array.from(new Set(S.publicFeed.map(t => t.genre).filter(Boolean)));
   let activeGenre = null;
-
   const grid = el("div", { class: "grid" });
-
   const draw = () => {
     grid.innerHTML = "";
     const rows = activeGenre ? S.publicFeed.filter(t => t.genre === activeGenre) : S.publicFeed;
@@ -2450,7 +2237,6 @@ function viewExplore(host) {
     }
     rows.forEach(t => grid.append(trackCard(t, { context: () => rows })));
   };
-
   const mkChip = (label, value) => {
     const chip = el("button", { class: "mini-btn", text: label });
     chip.addEventListener("click", () => {
@@ -2461,33 +2247,27 @@ function viewExplore(host) {
     });
     return chip;
   };
-
   const allChip = mkChip("All", null);
   allChip.classList.add("on");
   filterRow.append(allChip);
   genres.forEach(g => filterRow.append(mkChip(g, g)));
-
   host.append(filterRow, grid);
   draw();
-
   // Discover people
   const peopleWrap = el("div");
   host.append(sectionBlock("People to follow", "Artists publishing on RRJIFY", peopleWrap));
-
   const seen = new Map();
   S.publicFeed.forEach(t => {
     if (t.ownerId && t.ownerId !== S.user.uid && !seen.has(t.ownerId)) {
       seen.set(t.ownerId, { uid: t.ownerId, displayName: t.ownerName, photoURL: t.ownerPhoto });
     }
   });
-
   if (!seen.size) {
     peopleWrap.append(el("div", { class: "section-note", text: "No other artists yet." }));
   } else {
     Array.from(seen.values()).slice(0, 10).forEach(u => peopleWrap.append(userRow(u)));
   }
 }
-
 function userRow(u) {
   const following = S.following.has(u.uid);
   return el("div", { class: "user-row", onclick: () => { location.hash = `#/profile/${u.uid}`; } },
@@ -2503,7 +2283,6 @@ function userRow(u) {
     })
   );
 }
-
 /* ===========================================================================
    VIEW · LIBRARY
    =========================================================================== */
@@ -2512,15 +2291,12 @@ function viewLibrary(host) {
     el("div", { class: "view-title", text: "Your Library" }),
     el("div", { class: "view-sub", text: "Your uploads and everything you've liked. Private unless you publish it." })
   ));
-
   const tabs = el("div", { style: "display:flex;gap:8px;margin-bottom:22px;flex-wrap:wrap" });
   const body = el("div");
   let tab = "uploads";
-
   const draw = () => {
     body.innerHTML = "";
     $$(".mini-btn", tabs).forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
-
     if (tab === "uploads") {
       if (!S.library.length) {
         body.append(emptyState("No uploads yet", "Your tracks will appear here.", { href: "#/upload", label: "Upload a track" }));
@@ -2544,7 +2320,6 @@ function viewLibrary(host) {
         list.append(row);
       });
       body.append(list);
-
     } else if (tab === "liked") {
       const liked = Array.from(S.liked).map(id => S.tracks.get(id)).filter(Boolean);
       if (!liked.length) {
@@ -2554,7 +2329,6 @@ function viewLibrary(host) {
       const list = el("div");
       liked.forEach((t, i) => list.append(trackRow(t, i, { context: () => liked })));
       body.append(list);
-
     } else {
       if (!S.playlists.length) {
         body.append(emptyState("No playlists", "Create one to group tracks together."));
@@ -2574,18 +2348,15 @@ function viewLibrary(host) {
       }));
     }
   };
-
   [["uploads", "Uploads"], ["liked", "Liked"], ["playlists", "Playlists"]].forEach(([key, label]) => {
     tabs.append(el("button", {
       class: "mini-btn", dataset: { tab: key }, text: label,
       onclick: () => { tab = key; draw(); }
     }));
   });
-
   host.append(tabs, body);
   draw();
 }
-
 async function createPlaylist() {
   openModal((modal, close) => {
     const input = el("input", { class: "input", placeholder: "Playlist name" });
@@ -2611,7 +2382,6 @@ async function createPlaylist() {
     input.focus();
   });
 }
-
 /* ===========================================================================
    VIEW · UPLOAD
    =========================================================================== */
@@ -2620,27 +2390,22 @@ function viewUpload(host) {
     el("div", { class: "view-title", text: "Upload" }),
     el("div", { class: "view-sub", text: "Drop files in and they start transferring straight away. Title, artist and cover art come from the file's own tags." })
   ));
-
   const fileInput = el("input", { type: "file", accept: ".mp3,.wav,.flac,.m4a,.ogg,audio/*", multiple: true, style: "display:none" });
-
   const zone = el("div", { class: "dropzone", onclick: () => fileInput.click() },
     el("strong", { text: "Drop audio files here" }),
     "MP3, WAV, FLAC, M4A or OGG · up to 200 MB each",
     el("small", { text: "MP3 at 192–256 kbps uploads fastest and streams identically for most listeners." })
   );
-
   ["dragenter", "dragover"].forEach(ev =>
     zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("over"); }));
   ["dragleave", "drop"].forEach(ev =>
     zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove("over"); }));
-
   const publishToggle = el("div", { class: "switch" });
   let publishNow = false;
   publishToggle.addEventListener("click", () => {
     publishNow = !publishNow;
     publishToggle.classList.toggle("on", publishNow);
   });
-
   const licenseSelect = el("select", { class: "select" },
     el("option", { value: "all-rights-reserved", text: "All rights reserved (my own recording)" }),
     el("option", { value: "cc-by", text: "Creative Commons — Attribution" }),
@@ -2648,16 +2413,13 @@ function viewUpload(host) {
     el("option", { value: "cc0", text: "Public domain (CC0)" }),
     el("option", { value: "licensed", text: "Licensed — I hold distribution rights" })
   );
-
   const handleFiles = (files) => {
     Array.from(files).forEach(f => queueUpload(f, {
       publishNow, license: licenseSelect.value
     }));
   };
-
   zone.addEventListener("drop", (e) => handleFiles(e.dataTransfer?.files || []));
   fileInput.addEventListener("change", () => { handleFiles(fileInput.files); fileInput.value = ""; });
-
   host.append(
     el("div", { class: "card" }, zone, fileInput),
     el("div", { class: "card" },
@@ -2682,28 +2444,23 @@ function viewUpload(host) {
       el("div", { id: "uploadQueue" })
     )
   );
-
   renderUploadQueue();
 }
-
 /* ===========================================================================
    VIEW · DOWNLOADS
    =========================================================================== */
 function viewDownloads(host) {
   const rows = Array.from(S.downloads.values());
   const totalBytes = rows.reduce((n, r) => n + (r.size || 0), 0);
-
   host.append(el("div", { class: "view-head" },
     el("div", { class: "view-title", text: "Downloads" }),
     el("div", { class: "view-sub", text: "Saved on this device. These play with no connection at all." })
   ));
-
   host.append(el("div", { class: "stats", style: "margin-bottom:26px" },
     stat(rows.length, "Tracks offline"),
     stat(fmtBytes(totalBytes), "Space used"),
     stat(navigator.onLine ? "Online" : "Offline", "Connection")
   ));
-
   if (!rows.length) {
     host.append(emptyState(
       "Nothing downloaded",
@@ -2712,7 +2469,6 @@ function viewDownloads(host) {
     ));
     return;
   }
-
   const list = el("div");
   rows.forEach((rec, i) => {
     const track = S.tracks.get(rec.meta.id) || rec.meta;
@@ -2727,7 +2483,6 @@ function viewDownloads(host) {
     row.append(el("div", { class: "trow-time", text: fmtBytes(rec.size) }));
     list.append(row);
   });
-
   host.append(list);
   host.append(el("button", {
     class: "btn btn-danger", text: "Clear all downloads", style: "margin-top:22px",
@@ -2746,7 +2501,6 @@ function viewDownloads(host) {
     }
   }));
 }
-
 /* ===========================================================================
    VIEW · MESSAGES (inbox)
    =========================================================================== */
@@ -2758,7 +2512,6 @@ function viewMessages(host) {
     ),
     el("button", { class: "btn btn-primary", text: "New chat", onclick: openNewChatModal })
   ));
-
   if (!S.chats.length) {
     host.append(emptyState(
       "No conversations yet",
@@ -2767,13 +2520,11 @@ function viewMessages(host) {
     ));
     return;
   }
-
   const list = el("div");
   S.chats.forEach(chat => {
     const label = chatLabel(chat);
     const unread = chat.lastSenderId && chat.lastSenderId !== S.user.uid &&
                    (!chat.readBy || !chat.readBy.includes(S.user.uid));
-
     list.append(el("div", {
       class: "chat-item", onclick: () => { location.hash = `#/chat/${chat.id}`; }
     },
@@ -2788,10 +2539,8 @@ function viewMessages(host) {
       )
     ));
   });
-
   host.append(list);
 }
-
 /* ===========================================================================
    VIEW · CHAT
    =========================================================================== */
@@ -2802,15 +2551,12 @@ function viewChat(host, chatId) {
       { href: "#/messages", label: "Back to messages" }));
     return;
   }
-
   const label = chatLabel(chat);
   markChatRead(chat.id);
-
   const body = el("div", { class: "chat-body", id: "chatBody" });
   const input = el("textarea", { placeholder: "Write a message…", rows: 1 });
   const send = el("button", { class: "chat-send", disabled: true,
     html: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>` });
-
   const doSend = async () => {
     const text = input.value.trim();
     if (!text) return;
@@ -2819,7 +2565,6 @@ function viewChat(host, chatId) {
     send.disabled = true;
     await sendMessage(chat.id, { type: "text", text });
   };
-
   input.addEventListener("input", () => {
     send.disabled = !input.value.trim();
     input.style.height = "auto";
@@ -2829,7 +2574,6 @@ function viewChat(host, chatId) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); }
   });
   send.addEventListener("click", doSend);
-
   const pane = el("div", { class: "chat-pane" },
     el("div", { class: "chat-head" },
       el("button", { class: "icon-btn", html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>`,
@@ -2849,29 +2593,24 @@ function viewChat(host, chatId) {
     body,
     el("div", { class: "chat-input" }, input, send)
   );
-
   host.append(pane);
-
   // Live message stream, scoped to this view so it unsubscribes on navigate.
   S.viewSubs.push(onSnapshot(
     query(collection(db, "chats", chat.id, "messages"), orderBy("createdAt", "asc"), limit(200)),
     (snap) => {
       const stick = body.scrollHeight - body.scrollTop - body.clientHeight < 120;
       body.innerHTML = "";
-
       if (snap.empty) {
         body.append(el("div", { class: "section-note", style: "margin:auto;text-align:center",
           text: "No messages yet. Say hello." }));
         return;
       }
-
       let lastSender = null;
       snap.forEach(d => {
         const m = d.data();
         const mine = m.senderId === S.user.uid;
         const showWho = chat.isGroup && !mine && m.senderId !== lastSender;
         lastSender = m.senderId;
-
         const bubble = m.type === "track" && m.track
           ? el("div", { class: "msg-track", onclick: () => {
               const t = S.tracks.get(m.track.id) || m.track;
@@ -2887,14 +2626,12 @@ function viewChat(host, chatId) {
               el("div", { style: "color:var(--accent)", html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>` })
             )
           : el("div", { class: "msg-bubble", text: m.text || "" });
-
         body.append(el("div", { class: `msg ${mine ? "out" : "in"}` },
           showWho ? el("div", { class: "msg-who", text: m.senderName || "User" }) : null,
           bubble,
           el("div", { class: "msg-who", text: fmtWhen(m.createdAt) })
         ));
       });
-
       if (stick) body.scrollTop = body.scrollHeight;
     },
     (err) => {
@@ -2903,31 +2640,24 @@ function viewChat(host, chatId) {
     }
   ));
 }
-
 /* ===========================================================================
    VIEW · PROFILE
    =========================================================================== */
 async function viewProfile(host, uid) {
   const targetUid = uid || S.user.uid;
   const isMe = targetUid === S.user.uid;
-
   host.append(el("div", { id: "profileHost" }, el("div", { class: "skeleton", style: "height:160px" })));
-
   const profile = isMe
     ? { uid: targetUid, ...(S.profile || {}), displayName: S.profile?.displayName || S.user.displayName, photoURL: S.user.photoURL }
     : await fetchProfile(targetUid);
-
   const mount = $("#profileHost");
   if (!mount) return;   // navigated away while loading
   mount.innerHTML = "";
-
   if (!profile) {
     mount.append(emptyState("User not found", "This profile doesn't exist or was removed."));
     return;
   }
-
   const following = S.following.has(targetUid);
-
   const actions = el("div", { class: "profile-actions" });
   if (isMe) {
     actions.append(
@@ -2948,7 +2678,6 @@ async function viewProfile(host, uid) {
   if (S.isAdmin && !isMe) {
     actions.append(el("span", { class: "admin-chip", text: "ADMIN VIEW" }));
   }
-
   mount.append(el("div", { class: "profile-head" },
     avatarNode("lg", profile.displayName, profile.photoURL),
     el("div", { class: "profile-meta" },
@@ -2962,11 +2691,9 @@ async function viewProfile(host, uid) {
       actions
     )
   ));
-
   // Their public tracks
   const theirs = S.publicFeed.filter(t => t.ownerId === targetUid);
   const ownPrivate = isMe ? S.library.filter(t => !t.public) : [];
-
   if (theirs.length) {
     const grid = el("div", { class: "grid" });
     theirs.forEach(t => grid.append(trackCard(t, { context: () => theirs })));
@@ -2977,21 +2704,18 @@ async function viewProfile(host, uid) {
         ? "Publish a track from your library and it shows up here."
         : "This artist hasn't published anything yet.")));
   }
-
   if (isMe && ownPrivate.length) {
     const grid = el("div", { class: "grid" });
     ownPrivate.forEach(t => grid.append(trackCard(t, { context: () => ownPrivate })));
     mount.append(sectionBlock("Private", "Only you can see these", grid));
   }
 }
-
 function openEditProfile(profile) {
   openModal((modal, close) => {
     const name = el("input", { class: "input", value: profile.displayName || "", placeholder: "Display name" });
     const handle = el("input", { class: "input", value: profile.username || "", placeholder: "username" });
     const bio = el("textarea", { class: "textarea", placeholder: "Tell people what you make" });
     bio.value = profile.bio || "";
-
     modal.append(
       el("h3", { text: "Edit profile" }),
       el("p", { class: "sub", text: "Saved to your account as soon as you confirm." }),
@@ -3020,7 +2744,6 @@ function openEditProfile(profile) {
     name.focus();
   });
 }
-
 /* ===========================================================================
    VIEW · SETTINGS
    =========================================================================== */
@@ -3029,9 +2752,7 @@ function viewSettings(host) {
     el("div", { class: "view-title", text: "Settings" }),
     el("div", { class: "view-sub", text: "Every change here saves to your account automatically — there's no save button." })
   ));
-
   const P = S.prefs;
-
   const toggleRow = (key, title, note) => {
     const sw = el("div", { class: `switch ${P[key] ? "on" : ""}` });
     sw.addEventListener("click", () => {
@@ -3044,7 +2765,6 @@ function viewSettings(host) {
       el("div", { class: "row-setting-ctl" }, sw)
     );
   };
-
   const selectRow = (key, title, note, options) => {
     const sel = el("select", { class: "select", onchange: (e) => setPref(key, e.target.value) },
       ...options.map(([v, l]) => el("option", { value: v, text: l, selected: P[key] === v ? "selected" : null }))
@@ -3055,7 +2775,6 @@ function viewSettings(host) {
       el("div", { class: "row-setting-ctl" }, sel)
     );
   };
-
   // --- Playback
   host.append(el("div", { class: "card" },
     el("div", { class: "card-title", text: "Playback" }),
@@ -3067,7 +2786,6 @@ function viewSettings(host) {
     toggleRow("gaplessPreload", "Preload the next track", "Smoother transitions, slightly more data."),
     toggleRow("normalizeVolume", "Normalise volume", "Even out loudness differences between tracks.")
   ));
-
   host.append(el("div", { class: "card" },
     el("div", { class: "card-title", text: "Downloads" }),
     el("div", { class: "card-sub", text: "Offline copies live in this browser's storage on this device only." }),
@@ -3082,14 +2800,12 @@ function viewSettings(host) {
         el("a", { class: "btn btn-ghost btn-sm", href: "#/downloads", text: "Manage" }))
     )
   ));
-
   // --- Appearance
   host.append(el("div", { class: "card" },
     el("div", { class: "card-title", text: "Appearance" }),
     el("div", { class: "card-sub", text: "Applies across every device you sign in on." }),
     selectRow("theme", "Theme", "Dark is the default.", [["dark", "Dark"], ["light", "Light"]])
   ));
-
   // --- Privacy
   host.append(el("div", { class: "card" },
     el("div", { class: "card-title", text: "Privacy" }),
@@ -3099,7 +2815,6 @@ function viewSettings(host) {
       ["everyone", "Everyone"], ["following", "People I follow"]
     ])
   ));
-
   // --- Account
   host.append(el("div", { class: "card" },
     el("div", { class: "card-title", text: "Account" }),
@@ -3112,39 +2827,32 @@ function viewSettings(host) {
     )
   ));
 }
-
 /* ===========================================================================
    VIEW · ADMIN
    =========================================================================== */
 function viewAdmin(host) {
   if (!S.isAdmin) { location.hash = "#/home"; return; }
-
   host.append(el("div", { class: "view-head" },
     el("div", { class: "view-title", text: "Admin" }),
     el("div", { class: "view-sub", text: "Monitor what's published and moderate the public catalogue." })
   ));
-
   const totalSize = S.publicFeed.reduce((n, t) => n + (t.fileSize || 0), 0);
   const artists = new Set(S.publicFeed.map(t => t.ownerId).filter(Boolean));
-
   host.append(el("div", { class: "stats", style: "margin-bottom:30px" },
     stat(S.publicFeed.length, "Public tracks"),
     stat(artists.size, "Publishing artists"),
     stat(fmtBytes(totalSize), "Catalogue size"),
     stat(S.chats.length, "Your conversations")
   ));
-
   // Admin activity is loaded only on demand so the normal dashboard stays fast.
   const activityWrap = el("div");
   host.append(sectionBlock("Conversation activity", "Recent private and group-chat activity for platform oversight", activityWrap));
   activityWrap.append(el("button", {
     class: "btn btn-ghost", text: "Load activity", onclick: () => loadAdminChatActivity(activityWrap)
   }));
-
   // --- catalogue moderation
   const tableWrap = el("div");
   host.append(sectionBlock("Public catalogue", "Anything here is visible to every user", tableWrap));
-
   if (!S.publicFeed.length) {
     tableWrap.append(emptyState("Nothing published", "The public catalogue is empty."));
   } else {
@@ -3166,11 +2874,9 @@ function viewAdmin(host) {
       tableWrap.append(row);
     });
   }
-
   // --- artists
   const artistWrap = el("div");
   host.append(sectionBlock("Artists", "Everyone with published material", artistWrap));
-
   const byArtist = new Map();
   S.publicFeed.forEach(t => {
     if (!t.ownerId) return;
@@ -3178,7 +2884,6 @@ function viewAdmin(host) {
     entry.count++;
     byArtist.set(t.ownerId, entry);
   });
-
   if (!byArtist.size) {
     artistWrap.append(el("div", { class: "section-note", text: "No artists yet." }));
   } else {
@@ -3196,7 +2901,6 @@ function viewAdmin(host) {
       });
   }
 }
-
 /* ===========================================================================
    AGI DJ
    Keyword/mood scoring over whatever the user can actually play. No server
@@ -3211,20 +2915,16 @@ const MOODS = {
   focus:     ["focus","concentration","work","coding","deep work","instrumental"],
   dark:      ["dark","moody","villain","night","brooding","cinematic"]
 };
-
 const STOP = new Set(["the","and","for","with","some","song","songs","music","play","give","me","a","an","of","to","my",
   "that","this","please","track","tracks","list","playlist","i","want","need","something","make","put","on"]);
-
 function djSearch(prompt) {
   const lower = prompt.toLowerCase();
   let mood = null;
   for (const [m, words] of Object.entries(MOODS)) {
     if (words.some(w => lower.includes(w))) { mood = m; break; }
   }
-
   const words = lower.split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
   const pool = Array.from(S.tracks.values()).filter(t => t.audioUrl || S.downloads.has(t.id));
-
   const scored = pool.map(track => {
     const hay = [track.title, track.artist, track.genre, track.album, track.description]
       .filter(Boolean).join(" ").toLowerCase();
@@ -3235,7 +2935,6 @@ function djSearch(prompt) {
     if (S.liked.has(track.id)) score += 1;
     return { track, score };
   }).sort((a, b) => b.score - a.score);
-
   const hits = scored.filter(s => s.score > 0);
   return {
     mood,
@@ -3243,43 +2942,34 @@ function djSearch(prompt) {
     tracks: (hits.length ? hits : scored).slice(0, 10).map(s => s.track)
   };
 }
-
 function openDjModal() {
   openModal((modal, close) => {
     const input = el("input", { class: "input", placeholder: "e.g. calm acoustic for late night studying" });
     const out = el("div", { style: "margin-top:16px" });
-
     const run = () => {
       const prompt = input.value.trim();
       if (!prompt) return;
       const result = djSearch(prompt);
       out.innerHTML = "";
-
       if (!result.tracks.length) {
         out.append(emptyState("Nothing to play yet", "Upload a track or browse Explore, then ask again."));
         return;
       }
-
       out.append(el("div", { class: "section-note", style: "margin-bottom:10px",
         text: result.matched
           ? (result.mood ? `A ${result.mood} queue, ${result.tracks.length} tracks.` : `${result.tracks.length} matches.`)
           : "No close match — here's a queue from everything available." }));
-
       result.tracks.forEach((t, i) => out.append(trackRow(t, i, { context: () => result.tracks })));
-
       out.append(el("button", {
         class: "btn btn-primary", style: "margin-top:14px", text: "Play this queue",
         onclick: () => { playTrack(result.tracks[0], result.tracks); close(); }
       }));
     };
-
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
-
     const chips = el("div", { style: "display:flex;gap:7px;flex-wrap:wrap;margin-top:12px" });
     ["high energy gym workout", "calm acoustic late night", "sad emotional", "focus instrumental"]
       .forEach(p => chips.append(el("button", { class: "mini-btn", text: p,
         onclick: () => { input.value = p; run(); } })));
-
     modal.append(
       el("h3", { text: "AGI DJ" }),
       el("p", { class: "sub", text: "Describe a mood or activity and it builds a queue from what you can actually play." }),
@@ -3289,7 +2979,6 @@ function openDjModal() {
     input.focus();
   });
 }
-
 /* ===========================================================================
    GLOBAL SEARCH
    Renders over the current view. Clearing the box restores the real route.
@@ -3300,7 +2989,6 @@ $("#globalSearch").addEventListener("input", debounce(async (e) => {
   S.searchActive = true;
   renderSearchResults(term);
 }, 300));
-
 async function renderSearchResults(term) {
   const host = $("#view");
   teardownViewSubs();
@@ -3308,82 +2996,65 @@ async function renderSearchResults(term) {
   host.append(el("div", { class: "view-head" },
     el("div", { class: "view-title", text: `Results for "${term}"` })
   ));
-
   const lower = term.toLowerCase();
   const tracks = Array.from(S.tracks.values()).filter(t =>
     [t.title, t.artist, t.genre, t.album].filter(Boolean).join(" ").toLowerCase().includes(lower));
-
   if (tracks.length) {
     const grid = el("div", { class: "grid" });
     tracks.slice(0, 24).forEach(t => grid.append(trackCard(t, { context: () => tracks })));
     host.append(sectionBlock("Tracks", `${tracks.length} found`, grid));
   }
-
   const people = await searchUsers(term);
   if (people.length) {
     const wrap = el("div");
     people.forEach(u => wrap.append(userRow(u)));
     host.append(sectionBlock("People", null, wrap));
   }
-
   if (!tracks.length && !people.length) {
     host.append(emptyState("No results", "Try a different title, artist or username."));
   }
 }
-
 /* ===========================================================================
    CONNECTION STATUS
    =========================================================================== */
 window.addEventListener("offline", () => toast("You're offline. Downloaded tracks still play.", "err"));
 window.addEventListener("online",  () => toast("Back online.", "ok"));
-
 /* ===========================================================================
    BOOT
    =========================================================================== */
 if (!location.hash) location.hash = "#/home";
-
 window.RRJIFY = {
   audio, state: S, playTrack, db, auth,
   version: "4.0"
 };
-
 console.log("%cRRJIFY 4.0", "color:#1ed760;font-weight:900;font-size:15px");
 console.log("Debug handle: window.RRJIFY");
 </script>
-
 <!--
 ================================================================================
   SETUP — nothing works until these are in place
 ================================================================================
-
 STEP 1 · Authentication
   Console → Authentication → Sign-in method → enable Google.
   Console → Authentication → Settings → Authorized domains → add the domain
   you serve this from. localhost is already there.
-
 STEP 2 · Storage
   Console → Storage → Get started. If it asks you to upgrade to Blaze, that
   is the Oct-2024 policy for new projects — Cloud Storage can't be created
   without it, and uploads will hang at 0% until a bucket exists.
   Then paste the Storage rules below.
-
 STEP 3 · Firestore
   Console → Firestore Database → Create database → paste the rules below.
-
 STEP 4 · Indexes
   Console → Firestore → Indexes → Composite. Add these three:
-
     tracks      : public (Asc)       + createdAt (Desc)
     chats       : memberIds (Array)  + lastMessageAt (Desc)
     users       : username (Asc)
-
   Or just run the app and click the links Firebase prints in the console.
-
 STEP 5 · Storage CORS (needed for offline downloads)
   Offline saving uses fetch() against the download URL, which needs CORS.
   Save this as cors.json and run:
      gsutil cors set cors.json gs://music-player-e9930.firebasestorage.app
-
   [
     {
       "origin": ["http://localhost:*", "https://YOUR-DOMAIN.com"],
@@ -3392,19 +3063,15 @@ STEP 5 · Storage CORS (needed for offline downloads)
       "maxAgeSeconds": 3600
     }
   ]
-
 STEP 6 · Serve over http
   Google sign-in and Storage both refuse to work from file://.
      npx serve .        or        python3 -m http.server 8080
-
 ================================================================================
   FIRESTORE RULES
 ================================================================================
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function signedIn()  { return request.auth != null; }
     function me()        { return request.auth.uid; }
     function isAdmin()   {
@@ -3412,7 +3079,6 @@ service cloud.firestore {
              && request.auth.token.email_verified == true
              && request.auth.token.email in ['rajatrawat903@gmail.com'];
     }
-
     // ---- profiles ----------------------------------------------------------
     match /users/{userId} {
       allow read: if signedIn();
@@ -3425,7 +3091,6 @@ service cloud.firestore {
                         .hasOnly(['followerCount','followingCount'])
                     );
       allow delete: if signedIn() && me() == userId;
-
       match /tracks/{trackId} {
         allow read, write: if signedIn() && me() == userId;
       }
@@ -3433,7 +3098,6 @@ service cloud.firestore {
       match /history/{id}       { allow read, write: if signedIn() && me() == userId; }
       match /playlists/{id}     { allow read, write: if signedIn() && me() == userId; }
       match /settings/{id}      { allow read, write: if signedIn() && me() == userId; }
-
       // the follower list is written by the person doing the following
       match /followers/{followerId} {
         allow read: if signedIn();
@@ -3444,7 +3108,6 @@ service cloud.firestore {
         allow write: if signedIn() && me() == userId;
       }
     }
-
     // ---- public catalogue --------------------------------------------------
     match /tracks/{trackId} {
       allow read: if signedIn();
@@ -3454,7 +3117,6 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.ownerId == me();
       allow delete: if signedIn() && (resource.data.ownerId == me() || isAdmin());
     }
-
     // ---- chat --------------------------------------------------------------
     match /chats/{chatId} {
       // The listed administrator can review conversation activity for platform
@@ -3463,7 +3125,6 @@ service cloud.firestore {
       allow create: if signedIn() && me() in request.resource.data.memberIds;
       allow update: if signedIn() && me() in resource.data.memberIds;
       allow delete: if signedIn() && resource.data.createdBy == me();
-
       match /messages/{messageId} {
         allow read: if signedIn() && (me() in get(/databases/$(database)/documents/chats/$(chatId)).data.memberIds
                     || isAdmin());
@@ -3473,7 +3134,6 @@ service cloud.firestore {
         allow update, delete: if signedIn() && resource.data.senderId == me();
       }
     }
-
     // ---- moderation queue --------------------------------------------------
     match /reports/{reportId} {
       allow create: if signedIn();
@@ -3481,63 +3141,49 @@ service cloud.firestore {
     }
   }
 }
-
 ================================================================================
   STORAGE RULES
 ================================================================================
-
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-
     function isAdmin() {
       return request.auth != null
              && request.auth.token.email_verified == true
              && request.auth.token.email in ['rajatrawat903@gmail.com'];
     }
-
     match /users/{userId}/{allPaths=**} {
       // published tracks must be readable by everyone signed in
       allow read: if request.auth != null;
-
       allow write: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.size < 200 * 1024 * 1024
                    && (request.resource.contentType.matches('audio/.*')
                        || request.resource.contentType.matches('image/.*'));
-
       allow delete: if request.auth != null
                     && (request.auth.uid == userId || isAdmin());
     }
   }
 }
-
 ================================================================================
   NOTES ON WHAT IS AND ISN'T REAL
 ================================================================================
-
   · "Streaming quality" and "Download quality" store a preference and control
     preloading. Genuine multi-bitrate streaming needs server-side transcoding
     (a Cloud Function running ffmpeg to produce 96/160/320 kbps renditions).
     The setting is wired up and persisted so that work has somewhere to land,
     but this build serves the original file. It doesn't pretend otherwise.
-
   · Normalise volume and crossfade are persisted preferences. Implementing
     them properly means routing through the Web Audio API with a GainNode and
     a ReplayGain-style loudness pass at upload time.
-
   · Unread counts use a simple readBy array. For per-message read receipts at
     scale you'd want a lastReadAt timestamp per member instead.
-
   · User search matches from the start of a username. Firestore has no
     substring index — for "contains" search, mirror usernames into Algolia or
     Typesense.
-
   · Admin status is checked in the rules against a verified email address, so
     changing the client constant alone grants nothing.
-
 ================================================================================
 -->
-
 </body>
 </html>
